@@ -36,12 +36,12 @@ train_btn = st.sidebar.button("Modell trainieren", type="primary")
 @st.cache_data(ttl=60)
 def load_data_pipeline(days_back=60):
     collector = DataCollector()
-    # 1. Fetch raw data (includes closed rides for logging)
+    # 1. Fetch raw data
     df_raw = collector.fetch_historical_data(days_back=days_back)
     
     if df_raw.empty: return pd.DataFrame(), pd.DataFrame()
         
-    # 2. Process data (filters closed rides for AI training)
+    # 2. Process data
     engine = FeatureEngineering()
     df_processed = engine.process_data(df_raw)
     
@@ -58,7 +58,6 @@ else:
     latest_ts = df_raw['datetime'].max()
     snapshot = df_raw[df_raw['datetime'] == latest_ts]
     
-    # Identify open rides (fallback to wait_time > 0 if flag missing)
     if 'is_open' in snapshot.columns:
         open_rides = snapshot[snapshot['is_open'] == True]
     else:
@@ -68,10 +67,10 @@ else:
     avg_wait = open_rides['wait_time'].mean() if count_open > 0 else 0
     temp_now = open_rides['temp'].mean() if 'temp' in open_rides.columns else 0
     
-    # Calculate current HCI approximation for KPI
+    # Calculate HCI approximation
     hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 
     
-    # Metrics Row (5 Columns)
+    # Metrics Row
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Letztes Update", latest_ts.strftime('%H:%M:%S'))
     
@@ -97,7 +96,6 @@ else:
             with c_chart:
                 st.subheader("Aktuelle Wartezeiten")
                 fig, ax = plt.subplots(figsize=(8, 5))
-                # Bar Chart
                 sns.barplot(data=open_rides.sort_values('wait_time', ascending=False), 
                             x='wait_time', y='ride_name', palette="viridis", ax=ax)
                 ax.set_xlabel("Minuten")
@@ -107,11 +105,47 @@ else:
                 
             with c_table:
                 st.subheader("Rohdaten Log")
-                st.dataframe(df_raw.tail(15)[['datetime', 'ride_name', 'wait_time', 'is_open']], 
-                             use_container_width=True)
+                
+                # Prepare Table Data
+                log_df = df_raw.tail(15)[['datetime', 'ride_name', 'wait_time', 'is_open']].copy()
+                
+                # Format Timestamp (remove milliseconds)
+                log_df['datetime'] = log_df['datetime'].dt.strftime('%H:%M:%S')
+                
+                # Display with nice formatting
+                st.dataframe(
+                    log_df,
+                    column_config={
+                        "datetime": "Zeitpunkt",
+                        "ride_name": "Attraktion",
+                        "wait_time": st.column_config.NumberColumn(
+                            "Wartezeit", format="%d min"
+                        ),
+                        "is_open": st.column_config.CheckboxColumn(
+                            "Status",
+                        )
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
         else:
             st.info("Park ist derzeit geschlossen. Historisches Log wird unten angezeigt.")
-            st.dataframe(df_raw.tail(20))
+            
+            # Same formatting for closed state log
+            log_df = df_raw.tail(20)[['datetime', 'ride_name', 'wait_time', 'is_open']].copy()
+            log_df['datetime'] = log_df['datetime'].dt.strftime('%d.%m. %H:%M')
+            
+            st.dataframe(
+                log_df,
+                column_config={
+                    "datetime": "Zeitstempel",
+                    "ride_name": "Attraktion",
+                    "wait_time": st.column_config.NumberColumn("Wartezeit", format="%d min"),
+                    "is_open": st.column_config.CheckboxColumn("Geöffnet?")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
 
     # TAB 2: AI INSIGHTS
     with tab2:
@@ -126,20 +160,18 @@ else:
         if 'metrics' in st.session_state:
             m = st.session_state['metrics']
             
-            # Model Metrics UI
             st.subheader("Modell Performance")
             m1, m2, m3 = st.columns(3)
-            m1.metric("RMSE", f"{m['rmse']:.2f} min", help="Root Mean Squared Error: Durchschnittliche Abweichung der Prognose in Minuten.")
-            m2.metric("R² Score", f"{m['r2']:.2f}", help="Bestimmtheitsmaß: Wie gut erklärt das Modell die Varianz? (1.0 = Perfekt)")
-            m3.metric("Signifikanz (p-value)", f"{m['p_value']:.4f}", help="Diebold-Mariano Test: < 0.05 bedeutet, das Modell ist signifikant besser als Raten.")
+            m1.metric("RMSE", f"{m['rmse']:.2f} min", help="Root Mean Squared Error")
+            m2.metric("R² Score", f"{m['r2']:.2f}", help="Bestimmtheitsmaß (1.0 = Perfekt)")
+            m3.metric("Signifikanz (p-value)", f"{m['p_value']:.4f}", help="Diebold-Mariano Test")
             
-            # Feature Importance UI
             st.subheader("Einflussfaktoren (Feature Importance)")
             st.markdown("Welche Faktoren beeinflussen die Wartezeit am stärksten?")
             
             fig_imp, ax_imp = plt.subplots(figsize=(8, 4))
             
-            # Mapping feature names to German for display
+            # Mapping feature names to German
             imp_df = m['feature_importance'].head(10).copy()
             feature_map = {
                 'hour': 'Tageszeit (Stunde)', 
@@ -161,7 +193,7 @@ else:
         else:
             st.info("Bitte trainieren Sie das Modell, um Analysen zu sehen.")
 
-    # TAB 3: SIMULATOR (COMPARISON MODE)
+    # TAB 3: SIMULATOR
     with tab3:
         if 'model' in st.session_state:
             st.subheader("Szenario-Analyse & Vergleich")
@@ -176,11 +208,10 @@ else:
                     s_rain = st.slider("Regen (mm)", 0.0, 15.0, 0.0)
                     s_cloud = st.slider("Bewölkung (%)", 0, 100, 20)
                     
-                    # HCI Calculation
                     sim_hci = (4 * max(0, 10-abs(s_temp-25)*0.5)) + (2 * (100-s_cloud)/10) + (3 * max(0, 10-s_rain*2)) + 10
                     st.metric("Simulierter HCI", f"{sim_hci:.1f}/100")
             
-            # --- 1. FIND REFERENCE DATA (Last open day) ---
+            # --- FIND REFERENCE DATA ---
             if 'is_open' in df_raw.columns:
                 valid_data = df_raw[df_raw['is_open'] == True]
             else:
@@ -189,24 +220,21 @@ else:
             if not valid_data.empty:
                 last_open_ts = valid_data['datetime'].max()
                 last_open_snapshot = df_raw[df_raw['datetime'] == last_open_ts]
-                
-                # Base for comparison
                 reference_status = last_open_snapshot[['ride_name', 'wait_time']].set_index('ride_name')
                 ref_label_short = "Basis"
                 ref_label_long = f"Letzter Real-Stand ({last_open_ts.strftime('%d.%m. %H:%M')})"
             else:
                 reference_status = pd.DataFrame(columns=['wait_time'])
                 ref_label_short = "N/A"
-                ref_label_long = "Keine historischen Daten verfügbar"
+                ref_label_long = "Keine Daten"
 
-            # --- 2. PREDICTION LOGIC ---
+            # --- PREDICTION LOGIC ---
             rides = df_ai['ride_name'].unique()
             preds = []
             
             for r in rides:
                 try:
                     rid_meta = df_ai[df_ai['ride_name']==r].iloc[0]
-                    
                     inp = pd.DataFrame([{
                         'hour': 14, 'weekday': 5, 'month': 7, 'is_weekend': 1,
                         'holiday_de_bw': 0, 'holiday_fr_zone_b': 0, 'holiday_ch_bs': 0,
@@ -215,33 +243,26 @@ else:
                         'wait_time_lag_6': rid_meta['wait_time_lag_6'],
                         'ride_id': rid_meta['ride_id']
                     }])
-                    
                     val = st.session_state['model'].predict(inp)[0]
                     preds.append({'Attraktion': r, 'Simulation': int(val)})
                 except: continue
             
-            # --- 3. MERGE & VISUALIZE ---
+            # --- MERGE & VISUALIZE ---
             if preds:
                 sim_df = pd.DataFrame(preds).set_index('Attraktion')
-                
-                # Left join to see predictions even if reference is missing
                 comp_df = sim_df.join(reference_status, how='left').fillna(0)
                 comp_df = comp_df.rename(columns={'wait_time': ref_label_short})
-                
                 comp_df['Differenz'] = comp_df['Simulation'] - comp_df[ref_label_short]
                 
-                # Visuals in right column
                 with col_vis:
-                    # Metrics
                     avg_diff = comp_df['Differenz'].mean()
-                    delta_color = "normal" if avg_diff < 0 else "inverse" 
+                    delta_color = "normal" if avg_diff < 0 else "inverse"
                     
                     st.markdown(f"#### Vergleich: Simulation vs. {ref_label_long}")
                     m1, m2 = st.columns(2)
                     m1.metric("Ø Wartezeit (Simuliert)", f"{comp_df['Simulation'].mean():.1f} min")
                     m2.metric("Veränderung zur Basis", f"{avg_diff:+.1f} min", delta_color=delta_color)
                     
-                    # Comparison Chart (Top 10)
                     top_comp = comp_df.sort_values(ref_label_short, ascending=False).head(10).reset_index()
                     melted = top_comp.melt(id_vars='Attraktion', value_vars=[ref_label_short, 'Simulation'], var_name='Szenario', value_name='Minuten')
                     
@@ -250,33 +271,19 @@ else:
                     ax_comp.set_ylabel("")
                     st.pyplot(fig_comp)
 
-            # --- 4. DETAILED TABLE (ACADEMIC STYLE) ---
+            # Detailed Table
             st.markdown("#### Detaillierte Prognose-Tabelle")
-            
-            # Prepare display dataframe
             display_df = comp_df.sort_values('Simulation', ascending=False).reset_index()
             
-            # Use Streamlit's Column Config for professional look
             st.dataframe(
                 display_df,
                 column_config={
                     "Attraktion": st.column_config.TextColumn("Attraktion"),
-                    ref_label_short: st.column_config.NumberColumn(
-                        "Basis (Ist)",
-                        format="%d min",
-                    ),
+                    ref_label_short: st.column_config.NumberColumn("Basis (Ist)", format="%d min"),
                     "Simulation": st.column_config.ProgressColumn(
-                        "Simulation (Soll)",
-                        help="Prognostizierte Auslastung",
-                        format="%d min",
-                        min_value=0,
-                        max_value=120, # Scale max for bar
+                        "Simulation (Soll)", format="%d min", min_value=0, max_value=120
                     ),
-                    "Differenz": st.column_config.NumberColumn(
-                        "Delta",
-                        help="Veränderung durch Simulation",
-                        format="%+d min", # Explicit sign (+/-)
-                    )
+                    "Differenz": st.column_config.NumberColumn("Delta", format="%+d min")
                 },
                 hide_index=True,
                 use_container_width=True
