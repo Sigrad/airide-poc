@@ -15,7 +15,7 @@ sns.set_theme(style="whitegrid")
 # --- HEADER SECTION ---
 st.title("AIRide: Analyse von Besucherströmen & Wartezeiten")
 st.markdown("""
-Dashboard zur Überwachung und Prognose von Besucherströmen.
+Dashboard zur Überwachung und Prognose von Besucherströmen von Europa Park.
 Dieses Tool nutzt **Random Forest Regression** und den **Holiday Climate Index (HCI)**.
 """)
 
