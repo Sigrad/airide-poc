@@ -71,8 +71,8 @@ else:
     # Calculate current HCI approximation for KPI
     hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 
     
-    # Metrics Row
-    c1, c2, c3, c4 = st.columns(4)
+    # Metrics Row (NOW 5 COLUMNS)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Letztes Update", latest_ts.strftime('%H:%M:%S'))
     
     if count_open == 0:
@@ -82,6 +82,10 @@ else:
         
     c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
     c4.metric("Aktueller HCI Score", f"{hci_score:.0f}/100", help="Holiday Climate Index: 100=Perfekt, 0=Schlecht")
+    
+    # New Metric: Data Volume
+    # Displays total loaded rows and how many are usable (open) for training
+    c5.metric("Datensätze (Total)", f"{len(df_raw):,}", f"{len(df_ai):,} Aktiv", help="Total geladene Historie vs. bereinigte Trainingsdaten (nur offene Bahnen).")
 
     st.markdown("---")
 
