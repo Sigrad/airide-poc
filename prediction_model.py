@@ -1,11 +1,14 @@
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from scipy.stats import norm
 
-class ModelTrainer:
+class PredictionModel:
+    """
+    Wrapper for the Random Forest Regressor.
+    Includes training, evaluation, and statistical significance testing.
+    """
     def __init__(self):
         self.model = RandomForestRegressor(n_estimators=100, max_depth=20, random_state=42)
         
@@ -16,53 +19,65 @@ class ModelTrainer:
                     'wait_time_lag_1', 'wait_time_lag_6',
                     'ride_id']
         
+        # Ensure all columns exist
         for f in features:
             if f not in df.columns: df[f] = 0
                 
         X = df[features]
         y = df['wait_time']
         
-        print(f"Training on {len(df)} rows...")
-        
+        # Time-Series Split (Last 20% as test set)
         split_idx = int(len(df) * 0.8)
         X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
         
+        # Baseline for comparison (Mean prediction)
         baseline_pred = np.full(len(y_test), y_train.mean())
         
+        # Training
         self.model.fit(X_train, y_train)
         rf_pred = self.model.predict(X_test)
         
+        # Metrics
         rmse = np.sqrt(mean_squared_error(y_test, rf_pred))
         mae = mean_absolute_error(y_test, rf_pred)
         r2 = r2_score(y_test, rf_pred)
         
-        print(f"Result: RMSE={rmse:.2f} | MAE={mae:.2f} | R2={r2:.2f}")
+        # Feature Importance Extraction
+        feature_importance = pd.DataFrame({
+            'Feature': features,
+            'Importance': self.model.feature_importances_
+        }).sort_values('Importance', ascending=False)
         
-        dm_stat, p_value = self.diebold_mariano_test(y_test, baseline_pred, rf_pred)
-        print(f"Diebold-Mariano Test: p-value={p_value:.6f}")
-        if p_value < 0.05:
-            print("   -> SIGNIFICANT: Model beats baseline.")
-        else:
-            print("   -> NOT SIGNIFICANT: Model not better than baseline.")
-            
-        return self.model
+        # Statistical Test
+        dm_stat, p_value = self._diebold_mariano_test(y_test, baseline_pred, rf_pred)
+        
+        return {
+            'model': self.model,
+            'rmse': rmse,
+            'mae': mae,
+            'r2': r2,
+            'p_value': p_value,
+            'feature_importance': feature_importance
+        }
 
-    def diebold_mariano_test(self, y_true, y_pred1, y_pred2):
+    def _diebold_mariano_test(self, y_true, y_pred1, y_pred2):
+        """
+        Tests if Model 2 is significantly better than Model 1.
+        Returns: statistic, p-value.
+        """
         y_true = np.array(y_true)
         y_pred1 = np.array(y_pred1)
         y_pred2 = np.array(y_pred2)
         
         e1 = (y_true - y_pred1)**2
         e2 = (y_true - y_pred2)**2
-        
         d = e1 - e2
+        
         d_mean = np.mean(d)
         gamma0 = np.var(d)
-        
         if gamma0 == 0: return 0, 1
         
         dm_stat = d_mean / np.sqrt(gamma0 / len(y_true))
         p_value = 2 * (1 - norm.cdf(np.abs(dm_stat)))
-        
         return dm_stat, p_value
