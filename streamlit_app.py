@@ -71,7 +71,7 @@ else:
     # Calculate current HCI approximation for KPI
     hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 
     
-    # Metrics Row (NOW 5 COLUMNS)
+    # Metrics Row (5 Columns)
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Letztes Update", latest_ts.strftime('%H:%M:%S'))
     
@@ -82,9 +82,6 @@ else:
         
     c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
     c4.metric("Aktueller HCI Score", f"{hci_score:.0f}/100", help="Holiday Climate Index: 100=Perfekt, 0=Schlecht")
-    
-    # New Metric: Data Volume
-    # Displays total loaded rows and how many are usable (open) for training
     c5.metric("Datensätze (Total)", f"{len(df_raw):,}", f"{len(df_ai):,} Aktiv", help="Total geladene Historie vs. bereinigte Trainingsdaten (nur offene Bahnen).")
 
     st.markdown("---")
@@ -184,7 +181,6 @@ else:
                     st.metric("Simulierter HCI", f"{sim_hci:.1f}/100")
             
             # --- 1. FIND REFERENCE DATA (Last open day) ---
-            # Search backwards for valid open timestamps
             if 'is_open' in df_raw.columns:
                 valid_data = df_raw[df_raw['is_open'] == True]
             else:
@@ -238,7 +234,7 @@ else:
                 with col_vis:
                     # Metrics
                     avg_diff = comp_df['Differenz'].mean()
-                    delta_color = "normal" if avg_diff < 0 else "inverse" # Green if less wait time
+                    delta_color = "normal" if avg_diff < 0 else "inverse" 
                     
                     st.markdown(f"#### Vergleich: Simulation vs. {ref_label_long}")
                     m1, m2 = st.columns(2)
@@ -246,28 +242,43 @@ else:
                     m2.metric("Veränderung zur Basis", f"{avg_diff:+.1f} min", delta_color=delta_color)
                     
                     # Comparison Chart (Top 10)
-                    st.markdown("#### Top Attraktionen im Vergleich")
                     top_comp = comp_df.sort_values(ref_label_short, ascending=False).head(10).reset_index()
-                    
-                    # Melt for Seaborn
                     melted = top_comp.melt(id_vars='Attraktion', value_vars=[ref_label_short, 'Simulation'], var_name='Szenario', value_name='Minuten')
                     
                     fig_comp, ax_comp = plt.subplots(figsize=(10, 5))
-                    # Colors: Grey for Base, Blue for Sim
                     sns.barplot(data=melted, x='Minuten', y='Attraktion', hue='Szenario', palette=["#9e9e9e", "#4c72b0"], ax=ax_comp)
                     ax_comp.set_ylabel("")
                     st.pyplot(fig_comp)
 
-            # 4. Detailed Table
+            # --- 4. DETAILED TABLE (ACADEMIC STYLE) ---
             st.markdown("#### Detaillierte Prognose-Tabelle")
+            
+            # Prepare display dataframe
+            display_df = comp_df.sort_values('Simulation', ascending=False).reset_index()
+            
+            # Use Streamlit's Column Config for professional look
             st.dataframe(
-                comp_df.sort_values('Simulation', ascending=False),
+                display_df,
                 column_config={
+                    "Attraktion": st.column_config.TextColumn("Attraktion"),
+                    ref_label_short: st.column_config.NumberColumn(
+                        "Basis (Ist)",
+                        format="%d min",
+                    ),
+                    "Simulation": st.column_config.ProgressColumn(
+                        "Simulation (Soll)",
+                        help="Prognostizierte Auslastung",
+                        format="%d min",
+                        min_value=0,
+                        max_value=120, # Scale max for bar
+                    ),
                     "Differenz": st.column_config.NumberColumn(
-                        "Änderung",
-                        format="%+d min",
+                        "Delta",
+                        help="Veränderung durch Simulation",
+                        format="%+d min", # Explicit sign (+/-)
                     )
                 },
+                hide_index=True,
                 use_container_width=True
             )
             
