@@ -17,6 +17,11 @@ st.markdown("Real-time data monitoring and predictive modeling for Europa-Park."
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("System Control")
 
+# --- NEU: CACHE CLEAR BUTTON ---
+if st.sidebar.button("🔄 Refresh Data / Clear Cache"):
+    st.cache_data.clear()
+    st.rerun()
+
 if os.path.exists("real_waiting_times.csv"):
     st.sidebar.success("Status: ONLINE (Real Data)")
 else:
@@ -28,7 +33,8 @@ days = st.sidebar.slider("Training Window (Days)", 30, 90, 60, help="Only affect
 train_btn = st.sidebar.button("Train / Retrain Model", type="primary")
 
 # --- DATA LOADING ---
-@st.cache_data(ttl=300)
+# TTL auf 60 Sekunden reduziert für schnellere Updates
+@st.cache_data(ttl=60)
 def load_and_process_data(days_back):
     harvester = DataHarvester()
     df_raw = harvester.fetch_historical_data(days_back=days_back)
@@ -49,15 +55,13 @@ else:
     # 1. KPI ROW
     last_update = df['datetime'].max()
     
-    # --- BUG FIX START ---
-    # Wir filtern erst auf den LETZTEN Zeitpunkt, bevor wir zählen.
+    # Filter auf den allerletzten Zeitstempel
     latest_snapshot = df[df['datetime'] == last_update]
     
-    # Jetzt zählen wir nur die Attraktionen, die in diesem Moment da sind
+    # Zähle nur Rides, die JETZT GERADE existieren im Datensatz
     active_rides = latest_snapshot['ride_name'].nunique()
     avg_wait = latest_snapshot['wait_time'].mean()
     current_temp = latest_snapshot['temp'].mean()
-    # --- BUG FIX END ---
     
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Last Update", str(last_update.strftime('%H:%M:%S')))
@@ -75,7 +79,6 @@ else:
         
         with col_chart:
             st.subheader("Current Wait Times (Latest Snapshot)")
-            # Sortierung für schönere Optik
             latest_df = latest_snapshot.sort_values('wait_time', ascending=False)
             
             if not latest_df.empty:
@@ -110,7 +113,6 @@ else:
                 sim_rain = c2.slider("Precipitation (mm)", 0.0, 20.0, 0.0)
                 sim_cloud = c3.slider("Cloud Cover (%)", 0, 100, 50)
                 
-                # Wir nehmen alle Rides, die im Datensatz bekannt sind, für die Simulation
                 rides_list = df['ride_name'].unique()
                 predictions = []
                 
