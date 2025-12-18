@@ -5,7 +5,7 @@ from retry_requests import retry
 
 class DataLoader:
     def __init__(self):
-        # Cache etwas verkürzen (10 min), damit wir frische Daten kriegen
+        # Short cache for forecast data
         cache_session = requests_cache.CachedSession('.cache', expire_after=600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
         self.openmeteo = openmeteo_requests.Client(session=retry_session)
@@ -13,7 +13,7 @@ class DataLoader:
     def fetch_weather_history(self, start_date, end_date):
         print(f"Fetching Weather (Forecast API): {start_date} -> {end_date}")
         
-        # WICHTIG: Wechsel auf Forecast API für aktuelle Daten!
+        # Using Forecast API to get live/current data
         url = "https://api.open-meteo.com/v1/forecast"
         
         params = {
@@ -22,7 +22,7 @@ class DataLoader:
             "start_date": start_date, 
             "end_date": end_date,
             "hourly": ["temperature_2m", "rain", "wind_speed_10m", "cloud_cover"],
-            "timezone": "Europe/Berlin"  # Wichtig für korrekte Zuordnung
+            "timezone": "Europe/Berlin"
         }
         
         try:
@@ -35,7 +35,6 @@ class DataLoader:
             response = responses[0]
             hourly = response.Hourly()
             
-            # Zeitachse aufbauen
             data = {"date": pd.date_range(
                 start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
                 end=pd.to_datetime(hourly.TimeEnd(), unit="s", utc=True),
@@ -49,9 +48,8 @@ class DataLoader:
             df['wind'] = hourly.Variables(2).ValuesAsNumpy()
             df['cloud_cover'] = hourly.Variables(3).ValuesAsNumpy()
             
-            # Formatierung
             df = df.rename(columns={'date': 'datetime'})
-            # Zeitzone entfernen für sauberen Merge mit CSV
+            # Remove timezone for merging
             df['datetime'] = df['datetime'].dt.tz_convert(None) 
             
             return df

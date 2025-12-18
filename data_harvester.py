@@ -11,17 +11,12 @@ class DataHarvester:
     def __init__(self):
         self.loader = DataLoader()
         self.csv_path = "real_waiting_times.csv"
-        # API Config for harvesting
         self.api_url = "https://queue-times.com/parks/51/queue_times.json"
         self.user_agent = {'User-Agent': 'AIRide-PoC-StudentProject/1.0'}
-        # Fallback list
         self.synthetic_rides = ['Silver Star', 'Blue Fire', 'Wodan', 'Arthur', 'Euro-Mir']
 
     # --- MODE A: DATA PROVIDER (Used by App) ---
     def fetch_historical_data(self, days_back=60):
-        """
-        Loads real data from CSV + Weather if available, else synthetic.
-        """
         if os.path.exists(self.csv_path):
             print(f"Reading real data from: {self.csv_path}")
             try:
@@ -30,11 +25,9 @@ class DataHarvester:
                 if df_real.empty:
                     print("CSV is empty. Switching to synthetic.")
                 else:
-                    # Parse timestamps
                     df_real['datetime'] = pd.to_datetime(df_real['timestamp'])
                     df_real = df_real.sort_values('datetime')
                     
-                    # Define weather window (Buffer for API)
                     start_date = df_real['datetime'].min().date()
                     end_date = df_real['datetime'].max().date()
                     w_start = (start_date - timedelta(days=1)).isoformat()
@@ -51,7 +44,6 @@ class DataHarvester:
                         df_real['cloud_cover'] = 50
                         return df_real
                     
-                    # Merge (Nearest Match)
                     df_real = df_real.sort_values('datetime')
                     df_weather = df_weather.sort_values('datetime')
                     
@@ -63,7 +55,6 @@ class DataHarvester:
                         tolerance=pd.Timedelta('1h')
                     )
                     
-                    # Fill NaNs
                     df_merged['temp'] = df_merged['temp'].fillna(20)
                     df_merged['rain'] = df_merged['rain'].fillna(0)
                     df_merged['wind'] = df_merged['wind'].fillna(5)
@@ -101,7 +92,8 @@ class DataHarvester:
                     data.append({
                         'datetime': current_dt, 'ride_name': ride,
                         'wait_time': max(0, int(wait)), 'temp': row['temp'],
-                        'rain': row['rain'], 'wind': row['wind'], 'cloud_cover': row['cloud_cover']
+                        'rain': row['rain'], 'wind': row['wind'], 'cloud_cover': row['cloud_cover'],
+                        'is_open': True
                     })
         return pd.DataFrame(data)
 

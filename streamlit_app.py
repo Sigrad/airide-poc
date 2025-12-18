@@ -46,20 +46,21 @@ with st.spinner("Synchronizing data pipeline..."):
 if df.empty or len(df) < 5:
     st.error("System Error: Insufficient data. Please ensure 'real_waiting_times.csv' is populated or API is accessible.")
 else:
-    # 1. KPI ROW (Standard Streamlit Style)
+    # 1. KPI ROW
+    # Note: df only contains OPEN rides due to FeatureEngineer filter
     last_update = df['datetime'].max()
     active_rides = df['ride_name'].nunique()
-    avg_wait = df['wait_time'].mean()
     
-    # Berechne aktuelle Durchschnittstemperatur aus den Daten
-    current_temp = df.loc[df['datetime'] == last_update, 'temp'].mean()
+    # Calculate stats based on latest snapshot
+    latest_snapshot = df[df['datetime'] == last_update]
+    avg_wait = latest_snapshot['wait_time'].mean()
+    current_temp = latest_snapshot['temp'].mean()
     
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Last Update", str(last_update.strftime('%H:%M:%S')))
-    kpi2.metric("Active Attractions", active_rides)
+    kpi2.metric("Open Attractions", active_rides)
     kpi3.metric("Avg Wait Time", f"{avg_wait:.1f} min")
-    # Zeigt jetzt die ECHTE Temperatur an, wenn Data Loader gefixt ist
-    kpi4.metric("Current Temp", f"{current_temp:.1f} °C")
+    kpi4.metric("Current Temp", f"{current_temp:.1f} C")
 
     st.markdown("---")
 
@@ -85,7 +86,7 @@ else:
 
     with tab_prediction:
         if 'model' not in st.session_state and not train_btn:
-            st.info("⚠️ The AI Model is not trained yet. Please click 'Train / Retrain Model' in the sidebar.")
+            st.info("The AI Model is not trained yet. Please click 'Train / Retrain Model' in the sidebar.")
         
         else:
             if train_btn:
@@ -98,7 +99,7 @@ else:
                 st.subheader("Predictive Simulator (Nowcasting)")
                 
                 c1, c2, c3 = st.columns(3)
-                sim_temp = c1.slider("Temperature (°C)", 0, 40, 22)
+                sim_temp = c1.slider("Temperature (C)", 0, 40, 22)
                 sim_rain = c2.slider("Precipitation (mm)", 0.0, 20.0, 0.0)
                 sim_cloud = c3.slider("Cloud Cover (%)", 0, 100, 50)
                 

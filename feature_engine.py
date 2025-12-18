@@ -28,11 +28,21 @@ class FeatureEngineer:
 
     def enrich_data(self, df_in):
         df = df_in.copy()
+        
+        # --- CRITICAL FILTER ---
+        # Only process rides that are OPEN. 
+        # Removing closed rides prevents training on 0-wait times.
+        if 'is_open' in df.columns:
+            df = df[df['is_open'] == True]
+            if df.empty: return pd.DataFrame()
+        
         if 'datetime' not in df.columns and 'timestamp' in df.columns:
              df['datetime'] = pd.to_datetime(df['timestamp'])
         df['datetime'] = pd.to_datetime(df['datetime'])
+        
         df = df.sort_values(['ride_name', 'datetime'])
         
+        # Time & Calendar
         df['hour'] = df['datetime'].dt.hour
         df['month'] = df['datetime'].dt.month
         df['weekday'] = df['datetime'].dt.weekday
@@ -42,8 +52,10 @@ class FeatureEngineer:
         df['holiday_ch_bs'] = df['datetime'].apply(lambda x: 1 if x in self.ch_holidays else 0)
         df['holiday_fr_zone_b'] = df['datetime'].apply(self._is_fr)
         
+        # HCI
         df['HCI_Urban'] = df.apply(self.calculate_hci, axis=1)
         
+        # Lag Features
         df['wait_time_lag_1'] = df.groupby('ride_name')['wait_time'].shift(1)
         df['wait_time_lag_6'] = df.groupby('ride_name')['wait_time'].shift(6)
         
