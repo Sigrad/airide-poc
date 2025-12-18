@@ -141,10 +141,13 @@ else:
             # Rename Features for Display (Hide holiday_de_bw)
             imp_df = m['feature_importance'].head(10).copy()
             feature_map = {
-                'hour': 'Tageszeit (Stunde)', 
+                'hour': 'Tageszeit (Stunde)',
+		'month': 'Monat',  
+		'is_weekend': 'Wochenende',
                 'temp': 'Temperatur', 
                 'ride_id': 'Attraktionstyp',
-                'wait_time_lag_1': 'Vorherige Wartezeit',
+                'wait_time_lag_1': 'Vorherige Wartezeit (1h)',
+		'wait_time_lag_6': 'Vorherige Wartezeit (6h)',
                 'HCI_Urban': 'Wetter Index (HCI)',
                 'weekday': 'Wochentag',
                 'rain': 'Regenmenge',
