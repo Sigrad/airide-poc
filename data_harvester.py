@@ -3,6 +3,7 @@ import numpy as np
 import os
 import requests
 import time
+import subprocess  # NEU: Für Git Befehle
 from datetime import datetime, timedelta, date
 from data_loader import DataLoader
 import random
@@ -14,6 +15,10 @@ class DataHarvester:
         self.api_url = "https://queue-times.com/parks/51/queue_times.json"
         self.user_agent = {'User-Agent': 'AIRide-PoC-StudentProject/1.0'}
         self.synthetic_rides = ['Silver Star', 'Blue Fire', 'Wodan', 'Arthur', 'Euro-Mir']
+        
+        # NEU: Konfiguration für Auto-Push
+        self.last_push_time = time.time()
+        self.push_interval = 1800  # 1800 Sekunden = 30 Minuten
 
     # --- MODE A: DATA PROVIDER (Used by App) ---
     def fetch_historical_data(self, days_back=60):
@@ -101,10 +106,18 @@ class DataHarvester:
     def start_harvesting(self, interval=600):
         print("AIRide Harvester started...")
         print(f"Storage: {os.path.abspath(self.csv_path)}")
+        print("Auto-Push: Enabled (every 30 mins)")
         print("Press CTRL+C to stop.\n")
         
         while True:
+            # 1. Daten holen
             self._fetch_and_save()
+            
+            # 2. Prüfen ob Zeit für GitHub Push
+            if time.time() - self.last_push_time > self.push_interval:
+                self._auto_push_to_github()
+                self.last_push_time = time.time()
+            
             print(f"Sleeping for {interval} seconds...")
             time.sleep(interval)
 
@@ -136,6 +149,27 @@ class DataHarvester:
             
         except Exception as e:
             print(f"Harvest Error: {e}")
+
+    def _auto_push_to_github(self):
+        print("--- Starting Auto-Push to GitHub ---")
+        try:
+            # 1. Git Add
+            subprocess.run(["git", "add", "real_waiting_times.csv"], check=True)
+            
+            # 2. Git Commit
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+            commit_msg = f"Auto-update data: {timestamp}"
+            # Wir fangen den Fehler ab, falls es nichts zu committen gibt (Exit Code 1)
+            subprocess.run(["git", "commit", "-m", commit_msg], check=False)
+            
+            # 3. Git Push
+            subprocess.run(["git", "push"], check=True)
+            print("--- GitHub Push Successful! ---")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Git Error (Push failed): {e}")
+        except FileNotFoundError:
+            print("Git not found. Please install Git and add it to PATH.")
 
 if __name__ == "__main__":
     h = DataHarvester()
