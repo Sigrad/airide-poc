@@ -7,175 +7,185 @@ from data_collector import DataCollector
 from feature_engineering import FeatureEngineering
 from prediction_model import PredictionModel
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="AIRide Analytics", layout="wide")
-sns.set_theme(style="whitegrid") # Professional styling for plots
+# --- KONFIGURATION ---
+st.set_page_config(page_title="AIRide Analyse", layout="wide")
 
-# --- HEADER ---
-st.title("AIRide: Crowd Flow & Wait Time Analytics")
-st.markdown("""
-Dashboard zur Überwachung und Prognose von Besucherströmen.
-Dieses Tool nutzt **Random Forest Regression** und den **Holiday Climate Index (HCI)**.
-""")
+# --- HEADER BEREICH ---
+st.title("AIRide: Analyse von Besucherströmen & Wartezeiten")
+st.markdown("Echtzeit-Datenüberwachung und prädiktive Modellierung für den Europa-Park.")
 
-# --- SIDEBAR ---
-st.sidebar.header("Control Panel")
-if st.sidebar.button("🔄 Refresh Data / Clear Cache"):
+# --- SIDEBAR STEUERUNG ---
+st.sidebar.header("Systemsteuerung")
+
+if st.sidebar.button("🔄 Daten aktualisieren / Cache leeren"):
     st.cache_data.clear()
     st.rerun()
 
-data_status = "ONLINE (Real Data)" if os.path.exists("real_waiting_times.csv") else "SIMULATION"
-st.sidebar.info(f"Source: {data_status}")
+if os.path.exists("real_waiting_times.csv"):
+    st.sidebar.success("Status: ONLINE (Echtzeit-Daten)")
+else:
+    st.sidebar.warning("Status: SIMULATION (Synthetische Daten)")
 
-st.sidebar.subheader("Model Configuration")
-train_btn = st.sidebar.button("Train Model", type="primary")
+st.sidebar.markdown("---")
+st.sidebar.subheader("Modell-Verwaltung")
+days = st.sidebar.slider("Trainingszeitraum (Tage)", 30, 90, 60, help="Beeinflusst nur den Simulations-Modus")
+train_btn = st.sidebar.button("Modell trainieren", type="primary")
 
-# --- DATA LOADING ---
+# --- DATEN LADEN ---
 @st.cache_data(ttl=60)
-def load_data_pipeline(days_back=60):
-    collector = DataCollector()
-    # 1. Raw Data (Includes closed rides for log view)
-    df_raw = collector.fetch_historical_data(days_back=days_back)
+def load_data_pipeline(days_back):
+    harvester = DataCollector()
+    # 1. Rohdaten holen (Enthält auch geschlossene Bahnen)
+    df_raw = harvester.fetch_historical_data(days_back=days_back)
     
-    if df_raw.empty: return pd.DataFrame(), pd.DataFrame()
+    if df_raw.empty:
+        return pd.DataFrame(), pd.DataFrame()
         
-    # 2. Processed Data (Excludes closed rides for AI training)
-    engine = FeatureEngineering()
-    df_processed = engine.process_data(df_raw)
+    # 2. Daten verarbeiten (Entfernt geschlossene Bahnen für KI-Training)
+    engineer = FeatureEngineering()
+    df_processed = engineer.process_data(df_raw)
     
     return df_raw, df_processed
 
-with st.spinner("Processing Data Pipeline..."):
-    df_raw, df_ai = load_data_pipeline()
+with st.spinner("Synchronisiere Datenpipeline..."):
+    # Wir laden beides: Rohdaten für Anzeige, KI-Daten für Modell
+    df_raw, df_ai = load_data_pipeline(days)
 
-# --- MAIN CONTENT ---
+# --- DASHBOARD HAUPTBEREICH ---
 if df_raw.empty:
-    st.error("No data available. Please enable the DataCollector.")
+    st.error("Systemfehler: Keine Daten gefunden.")
 else:
-    # --- KPI CALCULATION ---
-    latest_ts = df_raw['datetime'].max()
-    snapshot = df_raw[df_raw['datetime'] == latest_ts]
+    # --- 1. KPI ZEILE (Basierend auf Rohdaten) ---
+    last_update = df_raw['datetime'].max()
     
-    # KPIs
-    open_rides = snapshot[snapshot['is_open'] == True] if 'is_open' in snapshot.columns else snapshot
-    count_open = len(open_rides)
-    avg_wait = open_rides['wait_time'].mean() if count_open > 0 else 0
-    temp_now = open_rides['temp'].mean() if 'temp' in open_rides.columns else 0
+    # Filter auf den allerletzten Zeitstempel
+    latest_snapshot_raw = df_raw[df_raw['datetime'] == last_update]
     
-    # Calculate current HCI for display
-    # (Approximation: 25C ideal, no rain)
-    hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 # Simplified calculation for KPI
-    
-    # Metrics Row
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Last Update", latest_ts.strftime('%H:%M:%S'))
-    
-    if count_open == 0:
-        c2.error("Park Closed")
+    # Zählen, wie viele davon WIRKLICH offen sind
+    if 'is_open' in latest_snapshot_raw.columns:
+        open_rides_count = latest_snapshot_raw[latest_snapshot_raw['is_open'] == True].shape[0]
     else:
-        c2.metric("Open Attractions", count_open)
+        # Fallback
+        open_rides_count = latest_snapshot_raw[latest_snapshot_raw['wait_time'] > 0].shape[0]
+
+    # Temperatur aus Rohdaten
+    current_temp = latest_snapshot_raw['temp'].mean()
+    
+    # Durchschnittswartezeit (nur von offenen Bahnen)
+    if open_rides_count > 0:
+        avg_wait = latest_snapshot_raw[latest_snapshot_raw['is_open'] == True]['wait_time'].mean()
+    else:
+        avg_wait = 0.0
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Letztes Update", str(last_update.strftime('%H:%M:%S')))
+    
+    # Dynamische Anzeige Status
+    if open_rides_count == 0:
+        kpi2.error(f"Offene Attraktionen: {open_rides_count} (PARK GESCHLOSSEN)")
+    else:
+        kpi2.metric("Offene Attraktionen", open_rides_count)
         
-    c3.metric("Avg Wait Time", f"{avg_wait:.1f} min", delta_color="inverse")
-    c4.metric("Current HCI Score", f"{hci_score:.0f}/100", help="Holiday Climate Index: 100=Perfect, 0=Bad")
+    kpi3.metric("Ø Wartezeit", f"{avg_wait:.1f} min")
+    kpi4.metric("Aktuelle Temp", f"{current_temp:.1f} °C")
 
     st.markdown("---")
 
-    # --- TABS ---
-    tab1, tab2, tab3 = st.tabs(["📊 Live Analysis", "🧠 AI & Model Insights", "🔮 Prediction Simulator"])
+    # --- 2. TABS ---
+    tab_overview, tab_prediction = st.tabs(["Aktueller Status & Analyse", "KI-Prognose-Simulator"])
 
-    # TAB 1: LIVE STATUS
-    with tab1:
-        if count_open > 0:
-            c_chart, c_table = st.columns([2, 1])
-            
-            with c_chart:
-                st.subheader("Current Wait Times")
-                fig, ax = plt.subplots(figsize=(8, 5))
+    with tab_overview:
+        if open_rides_count == 0:
+            st.info("😴 Der Park ist derzeit geschlossen. Keine aktuellen Wartezeiten verfügbar.")
+            st.subheader("Letzter bekannter Status (vor Schließung)")
+            # Spalten umbenennen für Anzeige
+            display_df = df_raw.tail(10).rename(columns={
+                'datetime': 'Zeit', 'ride_name': 'Attraktion', 'wait_time': 'Wartezeit', 'temp': 'Temp', 'is_open': 'Offen'
+            })
+            st.dataframe(display_df, use_container_width=True)
+        else:
+            col_chart, col_raw = st.columns([2, 1])
+            with col_chart:
+                st.subheader("Aktuelle Wartezeiten")
+                # Nur offene Bahnen für Chart
+                open_snapshot = latest_snapshot_raw[latest_snapshot_raw['is_open'] == True].sort_values('wait_time', ascending=False)
                 
-                sns.barplot(data=open_rides.sort_values('wait_time', ascending=False), 
-                            x='wait_time', y='ride_name', palette="viridis", ax=ax)
-                ax.set_xlabel("Minutes")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.barplot(data=open_snapshot, x='wait_time', y='ride_name', palette="viridis", ax=ax)
+                ax.set_xlabel("Wartezeit (Minuten)")
                 ax.set_ylabel("")
                 st.pyplot(fig)
-                st.caption("Echtzeit-Auslastung der offenen Attraktionen.")
                 
-            with c_table:
-                st.subheader("Raw Data Log")
-                st.dataframe(df_raw.tail(15)[['datetime', 'ride_name', 'wait_time', 'is_open']], 
-                             use_container_width=True)
-        else:
-            st.info("Park is currently closed. Showing historical log below.")
-            st.dataframe(df_raw.tail(20))
+            with col_raw:
+                st.subheader("Daten-Protokoll")
+                display_df = df_ai[['datetime', 'ride_name', 'wait_time', 'temp']].tail(15).rename(columns={
+                    'datetime': 'Zeit', 'ride_name': 'Attraktion', 'wait_time': 'Wartezeit', 'temp': 'Temp'
+                })
+                st.dataframe(display_df, use_container_width=True)
 
-    # TAB 2: AI INSIGHTS
-    with tab2:
-        if train_btn:
-            trainer = PredictionModel()
-            with st.spinner("Training Random Forest..."):
-                results = trainer.train_and_evaluate(df_ai)
-                st.session_state['model'] = results['model']
-                st.session_state['metrics'] = results
-            st.success("Training Complete.")
+    with tab_prediction:
+        # Prüfung: Genug Daten?
+        if df_ai.empty or len(df_ai) < 5:
+            st.warning("Nicht genügend historische Daten von offenen Attraktionen für das Training vorhanden (Modell benötigt Wartezeiten > 0).")
         
-        if 'metrics' in st.session_state:
-            m = st.session_state['metrics']
-            
-            # Model Metrics Explanation
-            st.subheader("Model Performance")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("RMSE", f"{m['rmse']:.2f} min", help="Root Mean Squared Error: Durchschnittliche Abweichung der Prognose in Minuten.")
-            m2.metric("R² Score", f"{m['r2']:.2f}", help="Bestimmtheitsmaß: Wie gut erklärt das Modell die Varianz? (1.0 = Perfekt)")
-            m3.metric("Significance (p-value)", f"{m['p_value']:.4f}", help="Diebold-Mariano Test: < 0.05 bedeutet, das Modell ist signifikant besser als Raten.")
-            
-            # Feature Importance Plot
-            st.subheader("Factor Influence (Feature Importance)")
-            st.markdown("Welche Faktoren beeinflussen die Wartezeit am stärksten?")
-            
-            fig_imp, ax_imp = plt.subplots(figsize=(8, 4))
-            
-            sns.barplot(data=m['feature_importance'].head(8), x='Importance', y='Feature', hue='Feature', palette="magma", ax=ax_imp)
-            st.pyplot(fig_imp)
-            st.caption("Visualisierung der Random Forest Entscheidungsbaum-Gewichtung.")
+        elif 'model' not in st.session_state and not train_btn:
+            st.info("Das KI-Modell ist noch nicht trainiert. Bitte klicken Sie auf 'Modell trainieren' in der Seitenleiste.")
+        
         else:
-            st.info("Please train the model to see insights.")
-
-    # TAB 3: SIMULATOR
-    with tab3:
-        if 'model' in st.session_state:
-            st.subheader("HCI Impact Simulation")
-            st.markdown("Simulieren Sie Wetterbedingungen, um die Auswirkung auf die Crowd-Dichte zu testen.")
+            if train_btn:
+                trainer = PredictionModel()
+                with st.spinner("Trainiere Random Forest Regressor..."):
+                    # Training mit bereinigten Daten
+                    st.session_state['model'] = trainer.train_and_evaluate(df_ai)
+                st.success("Modell erfolgreich trainiert!")
             
-            sc1, sc2, sc3 = st.columns(3)
-            s_temp = sc1.slider("Temperature (°C)", 0, 40, 25)
-            s_rain = sc2.slider("Rain (mm)", 0.0, 15.0, 0.0)
-            s_cloud = sc3.slider("Clouds (%)", 0, 100, 20)
-            
-            # Calculate HCI for Sim
-            sim_hci = (4 * max(0, 10-abs(s_temp-25)*0.5)) + (2 * (100-s_cloud)/10) + (3 * max(0, 10-s_rain*2)) + 10
-            st.metric("Simulated HCI", f"{sim_hci:.1f}/100")
-            
-            # Predict
-            rides = df_ai['ride_name'].unique()
-            preds = []
-            
-            for r in rides:
-                # Find ride ID
-                rid_meta = df_ai[df_ai['ride_name']==r].iloc[0]
+            if 'model' in st.session_state:
+                st.subheader("Prädiktiver Simulator (Nowcasting)")
                 
-                # Input Vector
-                inp = pd.DataFrame([{
-                    'hour': 14, 'weekday': 5, 'month': 7, 'is_weekend': 1,
-                    'holiday_de_bw': 0, 'holiday_fr_zone_b': 0, 'holiday_ch_bs': 0,
-                    'temp': s_temp, 'rain': s_rain, 'HCI_Urban': sim_hci,
-                    'wait_time_lag_1': rid_meta['wait_time_lag_1'], # Use last known lag
-                    'wait_time_lag_6': rid_meta['wait_time_lag_6'],
-                    'ride_id': rid_meta['ride_id']
-                }])
+                c1, c2, c3 = st.columns(3)
+                sim_temp = c1.slider("Temperatur (°C)", 0, 40, 22)
+                sim_rain = c2.slider("Niederschlag (mm)", 0.0, 20.0, 0.0)
+                sim_cloud = c3.slider("Bewölkung (%)", 0, 100, 50)
                 
-                val = st.session_state['model'].predict(inp)[0]
-                preds.append({'Attraction': r, 'Forecast (min)': int(val)})
-            
-            st.table(pd.DataFrame(preds).sort_values('Forecast (min)', ascending=False).set_index('Attraction'))
-            
-        else:
-            st.warning("Model required. Train in Sidebar/Tab 2.")
+                # Simulation
+                rides_list = df_raw['ride_name'].unique()
+                predictions = []
+                
+                for ride in rides_list:
+                    try:
+                        # Metadaten aus KI-Datensatz holen
+                        ride_data = df_ai[df_ai['ride_name'] == ride]
+                        if ride_data.empty: continue
+                        
+                        ride_id = ride_data['ride_id'].iloc[0]
+                        avg_lag = ride_data['wait_time'].mean()
+                    except: continue
+                    
+                    # HCI Berechnung
+                    tc = max(0, 10 - abs(sim_temp - 25) * 0.5)
+                    a = (100 - sim_cloud) / 10
+                    p = max(0, 10 - sim_rain * 2)
+                    w = 10 
+                    hci_score = (4 * tc) + (2 * a) + (3 * p) + (1 * w)
+                    
+                    input_vector = pd.DataFrame([{
+                        'hour': 14, 'weekday': 5, 'month': 7, 'is_weekend': 1,
+                        'holiday_de_bw': 0, 'holiday_fr_zone_b': 0, 'holiday_ch_bs': 0,
+                        'temp': sim_temp, 'rain': sim_rain, 'HCI_Urban': hci_score,
+                        'wait_time_lag_1': avg_lag, 'wait_time_lag_6': avg_lag,
+                        'ride_id': ride_id
+                    }])
+                    
+                    try:
+                        pred_val = st.session_state['model'].predict(input_vector)[0]
+                        predictions.append({
+                            'Attraktion': ride,
+                            'Prognose (Min)': int(pred_val),
+                            'HCI Einfluss': f"{hci_score:.1f}"
+                        })
+                    except: pass
+                
+                if predictions:
+                    st.table(pd.DataFrame(predictions).sort_values('Prognose (Min)', ascending=False).set_index('Attraktion'))
+                else:
+                    st.warning("Simulation noch nicht möglich - Modell benötigt diversere Trainingsdaten.")
