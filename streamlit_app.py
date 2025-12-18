@@ -47,18 +47,21 @@ if df.empty or len(df) < 5:
     st.error("System Error: Insufficient data. Please ensure 'real_waiting_times.csv' is populated or API is accessible.")
 else:
     # 1. KPI ROW
-    # Note: df only contains OPEN rides due to FeatureEngineer filter
     last_update = df['datetime'].max()
-    active_rides = df['ride_name'].nunique()
     
-    # Calculate stats based on latest snapshot
+    # --- BUG FIX START ---
+    # Wir filtern erst auf den LETZTEN Zeitpunkt, bevor wir zählen.
     latest_snapshot = df[df['datetime'] == last_update]
+    
+    # Jetzt zählen wir nur die Attraktionen, die in diesem Moment da sind
+    active_rides = latest_snapshot['ride_name'].nunique()
     avg_wait = latest_snapshot['wait_time'].mean()
     current_temp = latest_snapshot['temp'].mean()
+    # --- BUG FIX END ---
     
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Last Update", str(last_update.strftime('%H:%M:%S')))
-    kpi2.metric("Open Attractions", active_rides)
+    kpi2.metric("Open Attractions (Live)", active_rides)
     kpi3.metric("Avg Wait Time", f"{avg_wait:.1f} min")
     kpi4.metric("Current Temp", f"{current_temp:.1f} C")
 
@@ -72,13 +75,17 @@ else:
         
         with col_chart:
             st.subheader("Current Wait Times (Latest Snapshot)")
-            latest_df = df[df['datetime'] == df['datetime'].max()].sort_values('wait_time', ascending=False)
+            # Sortierung für schönere Optik
+            latest_df = latest_snapshot.sort_values('wait_time', ascending=False)
             
-            fig, ax = plt.subplots(figsize=(10, 6))
-            sns.barplot(data=latest_df, x='wait_time', y='ride_name', palette="viridis", ax=ax)
-            ax.set_xlabel("Wait Time (Minutes)")
-            ax.set_ylabel("")
-            st.pyplot(fig)
+            if not latest_df.empty:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sns.barplot(data=latest_df, x='wait_time', y='ride_name', palette="viridis", ax=ax)
+                ax.set_xlabel("Wait Time (Minutes)")
+                ax.set_ylabel("")
+                st.pyplot(fig)
+            else:
+                st.info("No open rides at the moment.")
             
         with col_raw:
             st.subheader("Recent Data Log")
@@ -103,6 +110,7 @@ else:
                 sim_rain = c2.slider("Precipitation (mm)", 0.0, 20.0, 0.0)
                 sim_cloud = c3.slider("Cloud Cover (%)", 0, 100, 50)
                 
+                # Wir nehmen alle Rides, die im Datensatz bekannt sind, für die Simulation
                 rides_list = df['ride_name'].unique()
                 predictions = []
                 
