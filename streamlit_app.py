@@ -1,85 +1,87 @@
 import streamlit as st
 import pandas as pd
-import joblib
 import matplotlib.pyplot as plt
-import numpy as np
+import seaborn as sns
+import os
+from data_harvester import DataHarvester
+from feature_engine import FeatureEngineer
+from model_trainer import ModelTrainer
 
-# --- CONFIG ---
-st.set_page_config(page_title="AIRide Real Data", page_icon="🎢", layout="wide")
+st.set_page_config(page_title="AIRide PoC", layout="wide")
 
-st.title("🎢 AIRide: Live Dashboard")
-st.markdown("**Status:** Production Mode (Trained on Real Harvested Data)")
-st.markdown("---")
+st.title("AIRide: Live Wait Time Prediction")
 
-# --- MODEL LOADING ---
-@st.cache_resource
-def load_model():
-    try:
-        # HIER GEÄNDERT: Lädt jetzt die korrekte Datei
-        return joblib.load('airide_model.pkl')
-    except:
-        return None
+if os.path.exists("real_waiting_times.csv"):
+    st.success("REAL DATA MODE active")
+else:
+    st.warning("SIMULATION MODE active (No CSV found)")
 
-model = load_model()
+days = st.sidebar.slider("History Window (Days)", 30, 90, 60)
+train_btn = st.sidebar.button("Train Model")
 
-if not model:
-    st.error("❌ Kein Modell gefunden! Hast du '1_train_on_real_csv.py' ausgeführt (nachdem der Harvester lief)?")
-    st.stop()
+@st.cache_data(ttl=600)
+def get_data(d):
+    h = DataHarvester()
+    df_raw = h.fetch_historical_data(days_back=d)
+    if df_raw.empty: return pd.DataFrame()
+    fe = FeatureEngineer()
+    return fe.enrich_data(df_raw)
 
-# --- INPUTS ---
-with st.sidebar:
-    st.header("Parameter")
-    
-    hour = st.slider("Uhrzeit", 9, 20, 14, format="%d:00 Uhr")
-    is_weekend = st.checkbox("Wochenende?", value=True)
-    
-    st.subheader("Dreiländereck")
-    c1, c2, c3 = st.columns(3)
-    is_bw = c1.checkbox("DE", value=False)
-    is_fr = c2.checkbox("FR", value=False)
-    is_ch = c3.checkbox("CH", value=False)
-    
-    st.subheader("Wetter (HCI)")
-    temp = st.slider("Temp (°C)", 0, 40, 24)
-    clouds = st.slider("Wolken (%)", 0, 100, 20)
-    rain = st.number_input("Regen (mm)", 0.0, 50.0, 0.0)
-    wind = st.slider("Wind (km/h)", 0, 80, 10)
-    
-    st.subheader("Live-Situation")
-    lag = st.slider("Wartezeit vor 1h", 0, 120, 30)
+with st.spinner("Loading Pipeline..."):
+    df = get_data(days)
 
-# --- CALCULATION ---
-# HCI
-tc = (np.clip(temp, 0, 35) / 35) * 10
-a = ((100 - clouds) / 100) * 10
-p = 0 if rain > 0.5 else 10
-w = ((60 - wind) / 60) if wind < 60 else 0
-w *= 10
-hci = (4*tc + 2*a + 3*p + 1*w) / 10 * 10
+if df.empty or len(df) < 5:
+    st.error("Not enough data to run. Please run 'data_harvester.py' locally first or check API.")
+else:
+    tab1, tab2 = st.tabs(["Analysis", "Prediction & AI"])
 
-# DataFrame
-input_df = pd.DataFrame({
-    'hour': [hour], 'is_weekend': [int(is_weekend)],
-    'is_holiday_BW': [int(is_bw)], 'is_school_holiday_FR': [int(is_fr)], 'is_holiday_CH': [int(is_ch)],
-    'temp': [temp], 'clouds': [clouds], 'rain_mm': [rain], 'wind_kmh': [wind],
-    'HCI_Urban': [hci], 'wait_time_lag_1h': [lag]
-})
+    with tab1:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Records", len(df))
+        c2.metric("Attractions", df['ride_name'].nunique())
+        c3.metric("Last Data Point", str(df['datetime'].max()))
+        
+        st.subheader("Wait Time Distribution")
+        fig, ax = plt.subplots(figsize=(8, 3))
+        sns.boxplot(data=df, x='wait_time', y='ride_name', ax=ax)
+        st.pyplot(fig)
 
-# Predict
-pred = int(max(0, model.predict(input_df)[0]))
-
-# --- VIEW ---
-c1, c2 = st.columns([1, 1])
-with c1:
-    st.metric("Prognose Wartezeit", f"{pred} Min", delta_color="inverse")
-    st.info(f"HCI Score: {hci:.1f}")
-
-with c2:
-    st.caption("Einflussfaktoren (Basierend auf deinen gesammelten Daten)")
-    importances = model.feature_importances_
-    idx = np.argsort(importances)
-    fig, ax = plt.subplots(figsize=(5, 3))
-    ax.barh(range(len(idx)), importances[idx])
-    ax.set_yticks(range(len(idx)))
-    ax.set_yticklabels(input_df.columns[idx])
-    st.pyplot(fig)
+    with tab2:
+        if train_btn or 'model' in st.session_state:
+            st.write("Training Model...")
+            if 'model' not in st.session_state:
+                mt = ModelTrainer()
+                st.session_state['model'] = mt.train_and_evaluate(df)
+                st.success("Training Complete! Check Terminal for Diebold-Mariano Statistics.")
+            
+            st.divider()
+            st.subheader("Live Simulator")
+            
+            c1, c2 = st.columns(2)
+            temp = c1.slider("Temp (C)", 0, 40, 22)
+            rain = c2.slider("Rain (mm)", 0.0, 20.0, 0.0)
+            
+            rides = df['ride_name'].unique()
+            res = []
+            
+            for r in rides:
+                try:
+                    ride_id = df[df['ride_name']==r]['ride_id'].iloc[0]
+                    avg = df[df['ride_name']==r]['wait_time'].mean()
+                except: continue
+                
+                hci = (4*max(0,10-abs(temp-25)*0.5)) + (3*max(0,10-rain*2)) + 20
+                
+                inp = pd.DataFrame([{
+                    'hour': 14, 'weekday': 5, 'month': 7, 'is_weekend': 1,
+                    'holiday_de_bw': 0, 'holiday_fr_zone_b': 0, 'holiday_ch_bs': 0,
+                    'temp': temp, 'rain': rain, 'HCI_Urban': hci,
+                    'wait_time_lag_1': avg, 'wait_time_lag_6': avg, 'ride_id': ride_id
+                }])
+                
+                pred = st.session_state['model'].predict(inp)[0]
+                res.append({'Ride': r, 'Prediction (min)': int(pred)})
+            
+            st.table(pd.DataFrame(res).set_index('Ride'))
+        else:
+            st.info("Click 'Train Model' to start.")
