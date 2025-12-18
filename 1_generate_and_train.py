@@ -6,13 +6,12 @@ import openmeteo_requests
 import requests_cache
 from retry_requests import retry
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error
 import os
 
 # --- KONFIGURATION ---
 CSV_FILE = "real_waiting_times.csv"
-MODEL_FILE = "airide_model_scientific.pkl"
+MODEL_FILE = "airide_model.pkl"  # <--- HIER GEÄNDERT
 LAT, LON = 48.26, 7.72 # Rust
 
 def load_harvested_data():
@@ -26,11 +25,7 @@ def load_harvested_data():
     # Filter: Nur offene Attraktionen
     df = df[df['is_open'] == True]
     
-    if len(df) < 50:
-        print("⚠️ WARNUNG: Sehr wenige Daten (<50). Das Modell wird ungenau sein.")
-        
-    # AGGREGATION: Wir bilden den Mittelwert aller Attraktionen pro 10-Minuten-Slot
-    # (Alternativ könntest du hier auf eine spezifische Ride-ID filtern)
+    # Aggregation auf 10-Minuten Takt (Mittelwert aller Attraktionen als Proxy für "Park-Fülle")
     df_agg = df.groupby('timestamp')['wait_time'].mean().reset_index()
     df_agg['wait_time'] = df_agg['wait_time'].astype(int)
     
@@ -54,10 +49,7 @@ def add_features(df):
     df['is_holiday_CH'] = df['date'].apply(lambda x: 1 if x in ch else 0)
     
     # 2. Lag-Feature (Wartezeit vor 1 Stunde)
-    # Da wir echte Daten haben, müssen wir das berechnen (Shift)
-    # Wir sortieren erst sicherheitshalber
     df = df.sort_values('timestamp')
-    # Wir nehmen den Wert von vor 6 Zeilen (bei 10 Min Takt = 60 Min)
     df['wait_time_lag_1h'] = df['wait_time'].shift(6).fillna(method='bfill')
     
     return df
@@ -85,7 +77,6 @@ def fetch_historical_weather(df):
         responses = openmeteo.weather_api(url, params=params)
         response = responses[0]
         
-        # Wetter-DataFrame bauen
         hourly = response.Hourly()
         w_dates = pd.date_range(
             start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
@@ -102,20 +93,15 @@ def fetch_historical_weather(df):
             "wind_kmh": hourly.Variables(3).ValuesAsNumpy()
         })
         
-        # Merge: Wir runden die Wartezeit-Timestamps auf die volle Stunde für das Wetter
-        # (Einfacher als Interpolation für den PoC)
+        # Merge auf Stundenbasis
         df['timestamp_h'] = df['timestamp'].dt.floor('H').dt.tz_localize('UTC')
-        
-        # Merge
         df_merged = pd.merge(df, weather_df, left_on='timestamp_h', right_on='timestamp_h', how='left')
-        
-        # Falls Wetterdaten fehlen (z.B. heute noch nicht im Archiv), füllen wir auf (Forward Fill)
         df_merged = df_merged.fillna(method='ffill').fillna(method='bfill')
         
         return df_merged
         
     except Exception as e:
-        print(f"⚠️ Wetter-Fehler: {e}. Nutze Durchschnittswerte als Fallback.")
+        print(f"⚠️ Wetter-Fehler: {e}. Nutze Fallback-Werte.")
         df['temp'] = 20
         df['rain_mm'] = 0
         df['clouds'] = 50
@@ -150,11 +136,11 @@ def main():
     y = df['wait_time']
     
     model = RandomForestRegressor(n_estimators=100, max_depth=15, random_state=42)
-    model.fit(X, y) # Wir nutzen alle Daten zum Training (da wir wenig haben)
+    model.fit(X, y)
     
     # Speichern
     joblib.dump(model, MODEL_FILE)
-    print(f"🎉 Erfolg! Modell '{MODEL_FILE}' wurde nur mit echten Daten trainiert.")
+    print(f"🎉 Erfolg! Modell '{MODEL_FILE}' wurde gespeichert.")
 
 if __name__ == "__main__":
     main()

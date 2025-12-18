@@ -15,7 +15,8 @@ st.markdown("---")
 @st.cache_resource
 def load_model():
     try:
-        return joblib.load('airide_model_scientific.pkl')
+        # HIER GEÄNDERT: Lädt jetzt die korrekte Datei
+        return joblib.load('airide_model.pkl')
     except:
         return None
 
