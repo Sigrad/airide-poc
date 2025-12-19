@@ -1,3 +1,16 @@
+"""
+Feature Engineering and Domain Logic Module for AIRide PoC.
+
+This module transforms raw observation data into a structured feature matrix.
+It implements the Holiday Climate Index (HCI) calculation, regional school
+holiday mapping, and temporal lag generation for time-series forecasting.
+
+Author: Sakir Doenmez
+Project: AIRide PoC
+Academic Context: PA HS 25
+Institution: ZHAW
+"""
+
 import pandas as pd
 import numpy as np
 import holidays

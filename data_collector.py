@@ -1,3 +1,16 @@
+"""
+Data Collection and Persistence Module for AIRide PoC.
+
+This module orchestrates the automated harvesting of real-time queue data from
+the Europa-Park API, enriches it with meteorological information, and manages
+data persistence through CSV storage with integrated Git versioning.
+
+Author: Sakir Doenmez
+Project: AIRide PoC
+Academic Context: PA HS 25
+Institution: ZHAW
+"""
+
 import pandas as pd
 import os
 import requests

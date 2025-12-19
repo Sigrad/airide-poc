@@ -1,3 +1,16 @@
+"""
+Main Entry Point for AIRide PoC Pipeline Testing.
+
+This script provides a command-line interface for testing the complete data
+processing and model training pipeline in a local development environment.
+It orchestrates the workflow from raw data acquisition to model benchmarking.
+
+Author: Sakir Doenmez
+Project: AIRide PoC
+Academic Context: PA HS 25
+Institution: ZHAW
+"""
+
 from data_harvester import DataHarvester
 from feature_engine import FeatureEngineer
 from model_trainer import ModelTrainer

@@ -1,3 +1,16 @@
+"""
+Interactive Dashboard for AIRide PoC.
+
+This module implements a comprehensive Streamlit web application for real-time
+monitoring, analysis, and prediction of theme park queue times. It integrates
+feature engineering and machine learning models into a stakeholder interface.
+
+Author: Sakir Doenmez
+Project: AIRide PoC
+Academic Context: PA HS 25
+Institution: ZHAW
+"""
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt

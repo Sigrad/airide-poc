@@ -1,3 +1,16 @@
+"""
+Meteorological Data Integration Service for AIRide PoC.
+
+This module interfaces with the Open-Meteo API to retrieve historical and
+forecasted weather data. It handles API authentication, caching, and
+data normalization for integration into the primary prediction pipeline.
+
+Author: Sakir Doenmez
+Project: AIRide PoC
+Academic Context: PA HS 25
+Institution: ZHAW
+"""
+
 import openmeteo_requests
 import requests_cache
 import pandas as pd

@@ -1,3 +1,16 @@
+"""
+Machine Learning Core and Model Ensemble for AIRide PoC.
+
+This module manages the training and evaluation of the predictive models.
+It implements an ensemble approach utilizing Random Forest, Gradient Boosting,
+and LSTM architectures to forecast queue durations based on multi-modal inputs.
+
+Author: Sakir Doenmez
+Project: AIRide PoC
+Academic Context: PA HS 25
+Institution: ZHAW
+"""
+
 import numpy as np
 import pandas as pd
 import warnings
