@@ -26,11 +26,16 @@ if st.sidebar.button("Daten aktualisieren / Cache leeren"):
     st.cache_data.clear()
     st.rerun()
 
+st.sidebar.subheader("Modell-Konfiguration")
+# REMOVED: (Benchmark) label
+train_btn = st.sidebar.button("Modelle trainieren", type="primary")
+
+# Visual separator to push Source info to bottom
+st.sidebar.markdown("---")
+
+# MOVED: Source status to bottom
 data_status = "ONLINE (Echtzeit-Daten)" if os.path.exists("real_waiting_times.csv") else "SIMULATION (Synthetische Daten)"
 st.sidebar.info(f"Quelle: {data_status}")
-
-st.sidebar.subheader("Modell-Konfiguration")
-train_btn = st.sidebar.button("Modelle trainieren (Benchmark)", type="primary")
 
 # --- DATA LOADING ---
 @st.cache_data(ttl=60)
@@ -71,7 +76,7 @@ else:
     st.markdown("---")
 
     # --- TABS ---
-    tab1, tab2, tab3, tab4 = st.tabs(["Live Analyse", "KI & Modell Insights", "Prognose & Simulation", "🏆 Modell-Benchmark"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Live Analyse", "KI & Modell Insights", "Prognose & Simulation", "Modell-Benchmark"])
 
     # TAB 1: LIVE
     with tab1:
@@ -155,7 +160,7 @@ else:
         if 'benchmark' in st.session_state:
             res = st.session_state['benchmark']
             
-            st.markdown("### ⚔️ Battle of Algorithms")
+            st.markdown("### Battle of Algorithms")
             
             # 1. Metrics Table
             metrics_data = []
