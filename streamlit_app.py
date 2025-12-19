@@ -196,7 +196,7 @@ else:
             for idx, (name, metrics) in enumerate(res.items()):
                 with cols[idx]:
                     if name == best_model_name:
-                        st.success(f"🏆 {name}")
+                        st.success(f"{name}")
                         st.metric(label="RMSE (Fehler)", value=f"{metrics['rmse']:.2f} min", delta="Minimum", delta_color="inverse")
                         st.metric(label="R² (Erklärungskraft)", value=f"{metrics['r2']:.2f}", delta="Maximum")
                     else:
