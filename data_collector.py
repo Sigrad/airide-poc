@@ -29,6 +29,9 @@ class DataCollector:
                 df_real = pd.read_csv(self.csv_path)
                 if df_real.empty: return self._generate_synthetic_data(days_back)
                 
+                # Mark as Real Data (Ground Truth)
+                df_real['is_synthetic'] = 0 
+                
                 df_real['datetime'] = pd.to_datetime(df_real['timestamp'])
                 df_real = df_real.sort_values('datetime')
                 
@@ -41,7 +44,7 @@ class DataCollector:
                     end_date.isoformat()
                 )
                 
-                if df_weather.empty: return df_real # Return raw if weather fails
+                if df_weather.empty: return df_real 
                 
                 # Merge
                 df_real = df_real.sort_values('datetime')
@@ -54,7 +57,7 @@ class DataCollector:
                     direction='nearest',
                     tolerance=pd.Timedelta('1h')
                 )
-                return df_merged.dropna(subset=['temp']) # Drop if no weather match
+                return df_merged.dropna(subset=['temp'])
 
             except Exception:
                 return self._generate_synthetic_data(days_back)
@@ -75,10 +78,15 @@ class DataCollector:
                 for ride in self.synthetic_rides:
                     wait = 15 + (20 if is_weekend else 0) + random.randint(-5, 15)
                     data.append({
-                        'datetime': row['datetime'], 'ride_name': ride,
-                        'wait_time': max(0, wait), 'temp': row['temp'],
-                        'rain': row['rain'], 'wind': row['wind'], 
-                        'cloud_cover': row['cloud_cover'], 'is_open': True
+                        'datetime': row['datetime'], 
+                        'ride_name': ride,
+                        'wait_time': max(0, wait), 
+                        'temp': row['temp'],
+                        'rain': row['rain'], 
+                        'wind': row['wind'], 
+                        'cloud_cover': row['cloud_cover'], 
+                        'is_open': True,
+                        'is_synthetic': 1  # Flag as Synthetic
                     })
         return pd.DataFrame(data)
 
@@ -118,9 +126,16 @@ class DataCollector:
 
     def _git_push(self):
         try:
-            subprocess.run(["git", "add", "real_waiting_times.csv"], check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(["git", "commit", "-m", f"Auto-update: {datetime.now()}"], check=False, stdout=subprocess.DEVNULL)
-            subprocess.run(["git", "push"], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["git", "add", "real_waiting_times.csv"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+            commit_res = subprocess.run(
+                ["git", "commit", "-m", f"Auto-update: {timestamp}"], 
+                check=False, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL
+            )
+            if commit_res.returncode == 0:
+                subprocess.run(["git", "push"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
 
