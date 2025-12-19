@@ -10,7 +10,7 @@ Proof of Concept für die prädiktive Analyse von Wartezeiten im Europa-Park Rus
 ## Features
 * **Live Data Harvesting:** Automatische Sammlung von Wartezeiten (Queue-Times API) und Wetterdaten (OpenMeteo API).
 * **Feature Engineering:** Berechnung des *Holiday Climate Index (HCI)* und Berücksichtigung von Ferien im Dreiländereck (DE/CH/FR).
-* **Machine Learning:** Random Forest Regressor zur Vorhersage.
+* **Künstliche Intelligenz:** Random Forest Regressor, Gradient Boosting und LSTM zur Vorhersage.
 * **Interactive Dashboard:** Streamlit-App zur Live-Analyse und Simulation ("Was-wäre-wenn").
 
 ## Installation & Start
