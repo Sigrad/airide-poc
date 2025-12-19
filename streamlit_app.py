@@ -15,9 +15,10 @@ sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#1e1e1e", "grid.color": "
 
 # --- HEADER ---
 st.title("AIRide: Analyse von Besucherströmen & Wartezeiten")
+# Updated subtitle to mention multiple models and HCI
 st.markdown("""
 Dashboard zur Überwachung und Prognose von Besucherströmen im Europa-Park.
-Dieses Tool nutzt **Random Forest**, **Gradient Boosting** und **Deep Learning (LSTM)**.
+Dieses Tool nutzt **mehrere KI-Modelle (Random Forest, Gradient Boosting, LSTM)** und den **Holiday Climate Index (HCI)** zur Präzisionssteigerung.
 """)
 
 # --- SIDEBAR ---
@@ -27,13 +28,11 @@ if st.sidebar.button("Daten aktualisieren / Cache leeren"):
     st.rerun()
 
 st.sidebar.subheader("Modell-Konfiguration")
-# REMOVED: (Benchmark) label
 train_btn = st.sidebar.button("Modelle trainieren", type="primary")
 
-# Visual separator to push Source info to bottom
 st.sidebar.markdown("---")
 
-# MOVED: Source status to bottom
+# Source status
 data_status = "ONLINE (Echtzeit-Daten)" if os.path.exists("real_waiting_times.csv") else "SIMULATION (Synthetische Daten)"
 st.sidebar.info(f"Quelle: {data_status}")
 
@@ -67,11 +66,12 @@ else:
     temp_now = open_rides['temp'].mean() if 'temp' in open_rides.columns else 0
     hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 
     
+    # Updated Metric Labels and Help Tooltip
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Update", latest_ts.strftime('%H:%M'))
-    c2.metric("Offen", len(open_rides))
-    c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
-    c4.metric("HCI Score", f"{hci_score:.0f}/100")
+    c1.metric("Letztes Update", latest_ts.strftime('%H:%M'))
+    c2.metric("Offene Attraktionen", len(open_rides))
+    c3.metric("Durchschn. Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
+    c4.metric("HCI", f"{hci_score:.0f}/100", help="Der Holiday Climate Index (HCI) bewertet die Eignung des Wetters für Freizeitparks (0=Schlecht, 100=Ideal).")
 
     st.markdown("---")
 
