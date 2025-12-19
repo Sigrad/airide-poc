@@ -8,41 +8,41 @@ from data_collector import DataCollector
 from feature_engineering import FeatureEngineering
 from prediction_model import PredictionModel
 
-# --- CONFIGURATION ---
+# --- KONFIGURATION ---
 st.set_page_config(page_title="AIRide Analyse", layout="wide")
-# Set Seaborn to a dark grid to match the requested dark aesthetic for charts
+# Setze Seaborn auf Darkgrid für das gewünschte dunkle Design in Charts
 sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#1e1e1e", "grid.color": "#444444", "text.color": "white", "xtick.color": "white", "ytick.color": "white", "axes.labelcolor": "white"})
 
-# --- HEADER SECTION ---
+# --- HEADER BEREICH ---
 st.title("AIRide: Analyse von Besucherströmen & Wartezeiten")
 st.markdown("""
-Dashboard zur Überwachung und Prognose von Besucherströmen.
+Dashboard zur Überwachung und Prognose von Besucherströmen im Europa-Park.
 Dieses Tool nutzt **Random Forest Regression** und den **Holiday Climate Index (HCI)**.
 """)
 
-# --- SIDEBAR CONTROL ---
+# --- SIDEBAR STEUERUNG ---
 st.sidebar.header("Systemsteuerung")
 if st.sidebar.button("Daten aktualisieren / Cache leeren"):
     st.cache_data.clear()
     st.rerun()
 
-# Data Source Status
+# Datenquelle Status
 data_status = "ONLINE (Echtzeit-Daten)" if os.path.exists("real_waiting_times.csv") else "SIMULATION (Synthetische Daten)"
 st.sidebar.info(f"Quelle: {data_status}")
 
 st.sidebar.subheader("Modell-Konfiguration")
 train_btn = st.sidebar.button("Modell trainieren", type="primary")
 
-# --- DATA LOADING ---
+# --- DATEN LADEN ---
 @st.cache_data(ttl=60)
 def load_data_pipeline(days_back=60):
     collector = DataCollector()
-    # 1. Fetch raw data
+    # 1. Rohdaten laden
     df_raw = collector.fetch_historical_data(days_back=days_back)
     
     if df_raw.empty: return pd.DataFrame(), pd.DataFrame()
         
-    # 2. Process data
+    # 2. Daten verarbeiten
     engine = FeatureEngineering()
     df_processed = engine.process_data(df_raw)
     
@@ -51,11 +51,11 @@ def load_data_pipeline(days_back=60):
 with st.spinner("Verarbeite Datenpipeline..."):
     df_raw, df_ai = load_data_pipeline()
 
-# --- MAIN CONTENT ---
+# --- HAUPTINHALT ---
 if df_raw.empty:
     st.error("Keine Daten verfügbar. Bitte aktivieren Sie den DataCollector.")
 else:
-    # --- KPI CALCULATION ---
+    # --- KPI BERECHNUNG ---
     latest_ts = df_raw['datetime'].max()
     snapshot = df_raw[df_raw['datetime'] == latest_ts]
     
@@ -68,10 +68,10 @@ else:
     avg_wait = open_rides['wait_time'].mean() if count_open > 0 else 0
     temp_now = open_rides['temp'].mean() if 'temp' in open_rides.columns else 0
     
-    # Calculate HCI approximation
+    # HCI Berechnung (Näherung)
     hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 
     
-    # Metrics Row
+    # Metriken Zeile
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Letztes Update", latest_ts.strftime('%H:%M:%S'))
     
@@ -97,7 +97,7 @@ else:
             st.subheader("Aktuelle Wartezeiten (Top 15)")
             if count_open > 0:
                 fig, ax = plt.subplots(figsize=(8, 6))
-                # Set background for plot to match dark theme
+                # Hintergrund dunkel setzen
                 fig.patch.set_facecolor('#0E1117') 
                 
                 sns.barplot(data=open_rides.sort_values('wait_time', ascending=False).head(15), 
@@ -112,13 +112,11 @@ else:
         with c_table:
             st.subheader("Park Übersicht & Status")
             
-            # 1. Prepare Data: Get all rides from the snapshot (not just open ones)
-            # We sort by: Open Status (True first), then Wait Time (Desc), then Name
+            # 1. Daten vorbereiten
             overview_df = snapshot[['ride_name', 'is_open', 'wait_time']].copy()
             overview_df = overview_df.sort_values(by=['is_open', 'wait_time', 'ride_name'], ascending=[False, False, True])
             
-            # 2. Apply Dark Design using Pandas Styler
-            # This forces the table to have a dark background regardless of Streamlit theme
+            # 2. Dark Design via Pandas Styler
             def style_dark(styler):
                 styler.set_properties(**{
                     'background-color': '#1e1e1e',
@@ -127,9 +125,9 @@ else:
                 })
                 return styler
 
-            # 3. Configure Columns for Streamlit
+            # 3. Tabelle anzeigen (Kompakter gemacht!)
             st.dataframe(
-                overview_df.style.pipe(style_dark), # Apply dark style
+                overview_df.style.pipe(style_dark), 
                 column_config={
                     "ride_name": st.column_config.TextColumn("Attraktion"),
                     "is_open": st.column_config.CheckboxColumn(
@@ -145,8 +143,9 @@ else:
                     )
                 },
                 hide_index=True,
-                use_container_width=True,
-                height=600 # Fixed height to make it scrollable like a real list
+                use_container_width=False, # WICHTIG: Verhindert das Strecken auf riesigen Monitoren
+                width=700,                 # Feste, angenehme Breite
+                height=450                 # Etwas kleiner in der Höhe
             )
 
     # TAB 2: AI INSIGHTS
@@ -164,17 +163,18 @@ else:
             
             st.subheader("Modell Performance")
             m1, m2, m3 = st.columns(3)
-            m1.metric("RMSE", f"{m['rmse']:.2f} min", help="Root Mean Squared Error")
-            m2.metric("R² Score", f"{m['r2']:.2f}", help="Bestimmtheitsmaß (1.0 = Perfekt)")
-            m3.metric("Signifikanz (p-value)", f"{m['p_value']:.4f}", help="Diebold-Mariano Test")
+            m1.metric("RMSE", f"{m['rmse']:.2f} min", help="Durchschnittlicher Fehler der Prognose in Minuten.")
+            m2.metric("R² Score", f"{m['r2']:.2f}", help="Erklärungsquote der Varianz (1.0 = Perfekt).")
+            m3.metric("Signifikanz (p-value)", f"{m['p_value']:.4f}", help="Diebold-Mariano Test (Kleiner Wert ist besser).")
             
             st.subheader("Einflussfaktoren (Feature Importance)")
             st.markdown("Welche Faktoren beeinflussen die Wartezeit am stärksten?")
             
             fig_imp, ax_imp = plt.subplots(figsize=(8, 4))
-            fig_imp.patch.set_facecolor('#0E1117') # Dark Background for plot
+            fig_imp.patch.set_facecolor('#0E1117') 
             
             imp_df = m['feature_importance'].head(10).copy()
+            # Mapping auf Deutsch
             feature_map = {
                 'hour': 'Tageszeit (Stunde)', 
                 'temp': 'Temperatur', 
@@ -190,8 +190,8 @@ else:
             imp_df['Feature'] = imp_df['Feature'].map(feature_map).fillna(imp_df['Feature'])
             
             sns.barplot(data=imp_df, x='Importance', y='Feature', hue='Feature', palette="magma", ax=ax_imp)
-            ax_imp.set_xlabel("Wichtigkeit", color='white')
-            ax_imp.set_ylabel("", color='white')
+            ax_imp.set_xlabel("Einflussstärke", color='white')
+            ax_imp.set_ylabel("Faktor", color='white')
             st.pyplot(fig_imp)
             st.caption("Visualisierung der Random Forest Entscheidungsbaum-Gewichtung.")
         else:
@@ -215,7 +215,7 @@ else:
                     sim_hci = (4 * max(0, 10-abs(s_temp-25)*0.5)) + (2 * (100-s_cloud)/10) + (3 * max(0, 10-s_rain*2)) + 10
                     st.metric("Simulierter HCI", f"{sim_hci:.1f}/100")
             
-            # --- FIND REFERENCE DATA ---
+            # --- REFERENZ DATEN FINDEN ---
             if 'is_open' in df_raw.columns:
                 valid_data = df_raw[df_raw['is_open'] == True]
             else:
@@ -232,7 +232,7 @@ else:
                 ref_label_short = "N/A"
                 ref_label_long = "Keine Daten"
 
-            # --- PREDICTION LOGIC ---
+            # --- PROGNOSE LOGIK ---
             rides = df_ai['ride_name'].unique()
             preds = []
             
@@ -251,7 +251,7 @@ else:
                     preds.append({'Attraktion': r, 'Simulation': int(val)})
                 except: continue
             
-            # --- MERGE & VISUALIZE ---
+            # --- MERGE & VISUALISIERUNG ---
             if preds:
                 sim_df = pd.DataFrame(preds).set_index('Attraktion')
                 comp_df = sim_df.join(reference_status, how='left').fillna(0)
@@ -271,14 +271,14 @@ else:
                     melted = top_comp.melt(id_vars='Attraktion', value_vars=[ref_label_short, 'Simulation'], var_name='Szenario', value_name='Minuten')
                     
                     fig_comp, ax_comp = plt.subplots(figsize=(10, 5))
-                    fig_comp.patch.set_facecolor('#0E1117') # Dark Background
+                    fig_comp.patch.set_facecolor('#0E1117') 
                     
                     sns.barplot(data=melted, x='Minuten', y='Attraktion', hue='Szenario', palette=["#9e9e9e", "#4c72b0"], ax=ax_comp)
                     ax_comp.set_ylabel("", color='white')
                     ax_comp.set_xlabel("Minuten", color='white')
                     st.pyplot(fig_comp)
 
-            # Detailed Table
+            # Detail Tabelle
             st.markdown("#### Detaillierte Prognose-Tabelle")
             display_df = comp_df.sort_values('Simulation', ascending=False).reset_index()
             
@@ -290,7 +290,7 @@ else:
                     "Simulation": st.column_config.ProgressColumn(
                         "Simulation (Soll)", format="%d min", min_value=0, max_value=120
                     ),
-                    "Differenz": st.column_config.NumberColumn("Delta", format="%+d min")
+                    "Differenz": st.column_config.NumberColumn("Differenz", format="%+d min")
                 },
                 hide_index=True,
                 use_container_width=True
