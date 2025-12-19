@@ -194,7 +194,7 @@ else:
                         with col_scatter:
                             st.markdown("**Kalibrierungs-Analyse**"); live_df['Prognose_Schnitt'] = live_df[['Random Forest', 'Gradient Boosting', 'LSTM']].mean(axis=1); fig, ax = plt.subplots(figsize=(8, 5)); fig.patch.set_facecolor('#0E1117'); sns.scatterplot(data=live_df, x='Ist', y='Prognose_Schnitt', color="#4c72b0", ax=ax, s=100); ax.plot([0, 120], [0, 120], color='white', linestyle='--', alpha=0.5); ax.set_xlabel("Ist-Messwert"); ax.set_ylabel("Modell-Prognose"); st.pyplot(fig)
                         with col_metrics:
-                            st.markdown("**Metriken**"); mae = abs(live_df['Ist'] - live_df['Prognose_Schnitt']).mean(); st.metric("MAE", f"{mae:.2f} min"); st.markdown("**Modell-Abweichungen**"); live_df['Abs. Fehler'] = abs(live_df['Ist'] - live_df['Random Forest']); st.dataframe(live_df[['Ist', 'Random Forest', 'Abs_Fehler']].sort_values('Abs_Fehler', ascending=False).head(5), use_container_width=True)
+                            st.markdown("**Metriken**"); mae = abs(live_df['Ist'] - live_df['Prognose_Schnitt']).mean(); st.metric("MAE", f"{mae:.2f} min"); st.markdown("**Modell-Abweichungen**"); live_df['Abs_Fehler'] = abs(live_df['Ist'] - live_df['Random Forest']); st.dataframe(live_df[['Ist', 'Random Forest', 'Abs_Fehler']].sort_values('Abs_Fehler', ascending=False).head(5), use_container_width=True)
 
     # TAB 4: Validation
     with tab4:
