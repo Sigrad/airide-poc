@@ -143,9 +143,9 @@ else:
                     )
                 },
                 hide_index=True,
-                use_container_width=False, # WICHTIG: Verhindert das Strecken auf riesigen Monitoren
-                width=700,                 # Feste, angenehme Breite
-                height=450                 # Etwas kleiner in der Höhe
+                use_container_width=False, 
+                width=700,                 
+                height=450                 
             )
 
     # TAB 2: AI INSIGHTS
@@ -173,20 +173,26 @@ else:
             fig_imp, ax_imp = plt.subplots(figsize=(8, 4))
             fig_imp.patch.set_facecolor('#0E1117') 
             
-            imp_df = m['feature_importance'].head(10).copy()
-            # Mapping auf Deutsch
+            imp_df = m['feature_importance'].head(12).copy() # Zeige Top 12 damit man alles sieht
+            
+            # --- HIER WAR DER FEHLER: DAS VOLLSTÄNDIGE MAPPING ---
             feature_map = {
                 'hour': 'Tageszeit (Stunde)', 
                 'temp': 'Temperatur', 
                 'ride_id': 'Attraktionstyp',
-                'wait_time_lag_1': 'Vorherige Wartezeit',
+                'wait_time_lag_1': 'Momentum (10min)',
+                'wait_time_lag_6': 'Trend (1h)',          # NEU HINZUGEFÜGT
                 'HCI_Urban': 'Wetter Index (HCI)',
                 'weekday': 'Wochentag',
+                'is_weekend': 'Wochenende',               # NEU HINZUGEFÜGT
+                'month': 'Monat (Saison)',                # NEU HINZUGEFÜGT
                 'rain': 'Regenmenge',
                 'holiday_de_bw': 'Schulferien (BW)',
                 'holiday_fr_zone_b': 'Schulferien (FR)',
                 'holiday_ch_bs': 'Feiertage (CH)'
             }
+            # -----------------------------------------------------
+            
             imp_df['Feature'] = imp_df['Feature'].map(feature_map).fillna(imp_df['Feature'])
             
             sns.barplot(data=imp_df, x='Importance', y='Feature', hue='Feature', palette="magma", ax=ax_imp)
