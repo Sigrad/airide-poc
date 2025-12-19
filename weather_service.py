@@ -5,21 +5,22 @@ from retry_requests import retry
 
 class WeatherService:
     """
-    Interface for the Open-Meteo API to retrieve historical and forecasted 
-    meteorological variables.
+    Handles interaction with the Open-Meteo API for historical and forecast data.
     """
     def __init__(self):
-        # Cache responses for 10 minutes to prevent API rate limiting
-        self.session = requests_cache.CachedSession('.cache', expire_after=600)
-        self.retry_session = retry(self.session, retries=5, backoff_factor=0.2)
-        self.api_client = openmeteo_requests.Client(session=self.retry_session)
-        self.endpoint = "https://api.open-meteo.com/v1/forecast"
+        # Cache responses for 10 minutes to respect API limits
+        cache_session = requests_cache.CachedSession('.cache', expire_after=600)
+        retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+        self.client = openmeteo_requests.Client(session=retry_session)
 
-    def fetch_weather_data(self, start_date: str, end_date: str) -> pd.DataFrame:
+    def fetch_weather_data(self, start_date, end_date):
         """
-        Queries weather features: temperature, rain, wind, and cloud cover.
+        Fetches hourly weather variables: temp, rain, wind, cloud cover.
+        Uses the Forecast API to ensure availability of recent data.
         """
-        query_params = {
+        url = "https://api.open-meteo.com/v1/forecast"
+        
+        params = {
             "latitude": 48.26, 
             "longitude": 7.72,
             "start_date": start_date, 
@@ -29,29 +30,36 @@ class WeatherService:
         }
         
         try:
-            api_responses = self.api_client.weather_api(self.endpoint, params=query_params)
-            if not api_responses:
+            responses = self.client.weather_api(url, params=params)
+            
+            if not responses:
                 return pd.DataFrame()
 
-            result = api_responses[0]
-            hourly_data = result.Hourly()
+            response = responses[0]
+            hourly = response.Hourly()
             
-            time_range = pd.date_range(
-                start=pd.to_datetime(hourly_data.Time(), unit="s", utc=True),
-                end=pd.to_datetime(hourly_data.TimeEnd(), unit="s", utc=True),
-                freq=pd.Timedelta(seconds=hourly_data.Interval()),
-                inclusive="left"
-            )
+            # Construct DataFrame from hourly data arrays
+            data = {
+                "date": pd.date_range(
+                    start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
+                    end=pd.to_datetime(hourly.TimeEnd(), unit="s", utc=True),
+                    freq=pd.Timedelta(seconds=hourly.Interval()),
+                    inclusive="left"
+                )
+            }
             
-            df_weather = pd.DataFrame({"datetime": time_range})
-            df_weather['temp'] = hourly_data.Variables(0).ValuesAsNumpy()
-            df_weather['rain'] = hourly_data.Variables(1).ValuesAsNumpy()
-            df_weather['wind'] = hourly_data.Variables(2).ValuesAsNumpy()
-            df_weather['cloud_cover'] = hourly_data.Variables(3).ValuesAsNumpy()
+            df = pd.DataFrame(data)
+            df['temp'] = hourly.Variables(0).ValuesAsNumpy()
+            df['rain'] = hourly.Variables(1).ValuesAsNumpy()
+            df['wind'] = hourly.Variables(2).ValuesAsNumpy()
+            df['cloud_cover'] = hourly.Variables(3).ValuesAsNumpy()
             
-            df_weather['datetime'] = df_weather['datetime'].dt.tz_convert(None) 
-            return df_weather
+            # Formatting: remove timezone for easier merging
+            df = df.rename(columns={'date': 'datetime'})
+            df['datetime'] = df['datetime'].dt.tz_convert(None) 
+            
+            return df
             
         except Exception as e:
-            print(f"Weather API Error: {str(e)}")
+            print(f"Weather API Error: {e}")
             return pd.DataFrame()
