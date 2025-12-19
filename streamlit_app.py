@@ -73,7 +73,7 @@ else:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Letzte Aktualisierung", latest_ts.strftime('%H:%M'))
     c2.metric("Aktive Attraktionen", len(open_rides))
-    c3.metric("Durchschn. Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
+    c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
     c4.metric(
         "HCI", 
         f"{hci_score:.0f}/100", 
@@ -190,10 +190,12 @@ else:
                     with c_t:
                         st.markdown("**Zeitparameter**")
                         s_hour = st.slider("Stunde", 9, 20, 14)
-                        s_day_name = st.selectbox("Wochentag", options=["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"], index=5)
-                        s_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"].index(s_day_name)
-                        s_month_name = st.selectbox("Monat", options=["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"], index=6)
-                        s_month = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"].index(s_month_name) + 1
+                        days_opt = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+                        s_day_name = st.selectbox("Wochentag", options=days_opt, index=5)
+                        s_weekday = days_opt.index(s_day_name)
+                        months_opt = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+                        s_month_name = st.selectbox("Monat", options=months_opt, index=6)
+                        s_month = months_opt.index(s_month_name) + 1
                         cc1, cc2, cc3 = st.columns(3)
                         s_hol_de = cc1.checkbox("Feiertag DE"); s_hol_fr = cc2.checkbox("Ferien FR"); s_hol_ch = cc3.checkbox("Feiertag CH")
 
@@ -215,8 +217,8 @@ else:
                     
                     if rows:
                         res_df = pd.DataFrame(rows).set_index('Attraktion')
-                        res_df['Konsens'] = res_df.mean(axis=1)
-                        res_df['Abweichung (StdDev)'] = res_df.std(axis=1)
+                        res_df['Durchschnitt'] = res_df.mean(axis=1)
+                        res_df['Varianz'] = res_df[['Random Forest', 'Gradient Boosting', 'LSTM']].std(axis=1)
 
                         st.subheader("Vergleichende Simulationsergebnisse")
                         
@@ -224,18 +226,19 @@ else:
                         with col_plot:
                             st.markdown("**Prognose-Übersicht (Top 10)**")
                             melted = res_df.reset_index().melt(id_vars='Attraktion', var_name='Modell', value_name='Minuten')
-                            top_rides = res_df.sort_values('Konsens', ascending=False).head(10).index.tolist()
+                            melted = melted[~melted['Modell'].isin(['Durchschnitt', 'Varianz'])]
+                            top_rides = res_df.sort_values('Durchschnitt', ascending=False).head(10).index.tolist()
                             fig, ax = plt.subplots(figsize=(10, 6)); fig.patch.set_facecolor('#0E1117')
                             sns.barplot(data=melted[melted['Attraktion'].isin(top_rides)], x='Minuten', y='Attraktion', hue='Modell', palette="viridis", ax=ax)
                             st.pyplot(fig)
 
                         with col_info:
                             st.markdown("**Modell-Diskordanz**")
-                            st.caption("Attraktionen mit der höchsten Prognose-Varianz (Unsicherheit).")
-                            st.dataframe(res_df[['Abweichung (StdDev)']].sort_values('Abweichung (StdDev)', ascending=False).head(5), use_container_width=True)
-                            st.markdown("**Stichprobe**")
-                            st.caption("Zufällige Auswahl von 10 Attraktionen zum Quervergleich.")
-                            st.dataframe(res_df.sample(min(10, len(res_df)))[['Random Forest', 'Gradient Boosting', 'LSTM']], use_container_width=True)
+                            st.caption("Höchste Prognose-Varianz zwischen den Algorithmen.")
+                            st.dataframe(res_df[['Varianz']].sort_values('Varianz', ascending=False).head(5), use_container_width=True)
+                            st.markdown("**Stichproben-Vergleich**")
+                            st.caption("Zufällige Auswahl zur Plausibilitätsprüfung.")
+                            st.dataframe(res_df.sample(min(8, len(res_df)))[['Random Forest', 'Gradient Boosting', 'LSTM']], use_container_width=True)
 
             with subtab_live:
                 latest_date = df_raw['datetime'].max().date()
@@ -263,31 +266,31 @@ else:
                                 'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'], 'ride_id': rid_meta['ride_id']
                             }])
                             preds = st.session_state['trainer'].predict_ensemble(inp_now)
-                            row = {'Attraktion': r, 'Messwert (Ist)': real_val}; row.update(preds); rows_live.append(row)
+                            row = {'Attraktion': r, 'Ist': real_val}; row.update(preds); rows_live.append(row)
                         except: continue
                     
                     if rows_live:
                         live_df = pd.DataFrame(rows_live).set_index('Attraktion')
                         st.subheader(f"Abgleich mit Echtzeitdaten ({latest_date})")
-                        st.info("Diese Ansicht quantifiziert die Modellkalibrierung. Die Streuung zwischen Ist-Werten und Prognosen indiziert die aktuelle Vorhersagegüte unter Berücksichtigung operativer Einflüsse.")
+                        st.info("Diese Ansicht quantifiziert die Modellkalibrierung. Die Streuung zwischen Ist-Werten und Prognosen indiziert die aktuelle Vorhersagegüte.")
                         
                         col_scatter, col_metrics = st.columns([2, 1])
                         with col_scatter:
-                            st.markdown("**Kalibrierungs-Plot (Ist vs. Prognose-Mittelwert)**")
-                            live_df['Mittelwert_Prognose'] = live_df[['Random Forest', 'Gradient Boosting', 'LSTM']].mean(axis=1)
+                            st.markdown("**Kalibrierungs-Analyse**")
+                            live_df['Prognose_Schnitt'] = live_df[['Random Forest', 'Gradient Boosting', 'LSTM']].mean(axis=1)
                             fig, ax = plt.subplots(figsize=(8, 5)); fig.patch.set_facecolor('#0E1117')
-                            sns.scatterplot(data=live_df, x='Messwert (Ist)', y='Mittelwert_Prognose', color="#4c72b0", ax=ax)
+                            sns.scatterplot(data=live_df, x='Ist', y='Prognose_Schnitt', color="#4c72b0", ax=ax, s=100)
                             ax.plot([0, 120], [0, 120], color='white', linestyle='--', alpha=0.5)
-                            ax.set_xlim(0, 120); ax.set_ylim(0, 120)
+                            ax.set_xlabel("Realer Messwert (Minuten)"); ax.set_ylabel("Modell-Prognose (Minuten)")
                             st.pyplot(fig)
                         
                         with col_metrics:
-                            st.markdown("**Präzisions-Metrik**")
-                            mae = abs(live_df['Messwert (Ist)'] - live_df['Mittelwert_Prognose']).mean()
+                            st.markdown("**Zusammenfassende Metriken**")
+                            mae = abs(live_df['Ist'] - live_df['Prognose_Schnitt']).mean()
                             st.metric("Mittlerer absoluter Fehler (MAE)", f"{mae:.2f} min")
-                            st.markdown("**Größte Abweichungen**")
-                            live_df['Fehler'] = abs(live_df['Messwert (Ist)'] - live_df['Random Forest'])
-                            st.dataframe(live_df[['Messwert (Ist)', 'Random Forest', 'Fehler']].sort_values('Fehler', ascending=False).head(5), use_container_width=True)
+                            st.markdown("**Modell-Abweichungen**")
+                            live_df['Abs_Fehler'] = abs(live_df['Ist'] - live_df['Random Forest'])
+                            st.dataframe(live_df[['Ist', 'Random Forest', 'Abs_Fehler']].sort_values('Abs_Fehler', ascending=False).head(5), use_container_width=True)
 
     # TAB 4: VALIDIERUNG
     with tab4:
