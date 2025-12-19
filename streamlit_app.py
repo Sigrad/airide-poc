@@ -11,12 +11,19 @@ from prediction_model import PredictionModel
 
 # --- KONFIGURATION ---
 st.set_page_config(page_title="AIRide Analyse", layout="wide")
-sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#1e1e1e", "grid.color": "#444444", "text.color": "white", "xtick.color": "white", "ytick.color": "white", "axes.labelcolor": "white"})
+sns.set_theme(style="darkgrid", rc={
+    "axes.facecolor": "#1e1e1e", 
+    "grid.color": "#444444", 
+    "text.color": "white", 
+    "xtick.color": "white", 
+    "ytick.color": "white", 
+    "axes.labelcolor": "white"
+})
 
 # --- KOPFZEILE ---
 st.title("AIRide: Analyse und Prognose von Besucherströmen")
 st.markdown("""
-System zur Überwachung und prädiktiven Modellierung von Wartezeiten (Europa-Park).
+System zur Überwachung und prädiktiven Modellierung von Wartezeiten im Europa-Park.
 Methodik: Ensemble-Learning (Random Forest, Gradient Boosting) und Deep Learning (LSTM) unter Einbezug des Holiday Climate Index (HCI).
 """)
 
@@ -65,21 +72,20 @@ else:
     
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Letzte Aktualisierung", latest_ts.strftime('%H:%M'))
-    c2.metric("Offene Attraktionen", len(open_rides))
-    c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
-    
+    c2.metric("Aktive Attraktionen", len(open_rides))
+    c3.metric("Durchschn. Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
     c4.metric(
         "HCI", 
         f"{hci_score:.0f}/100", 
-        help="Der Holiday Climate Index (HCI) bewertet die klimatische Eignung für Freizeitaktivitäten. Das Modell integriert diesen Index mit kalendarischen Faktoren (Feiertage, Schulferien), um sowohl den meteorologischen als auch den saisonalen Einfluss auf die Besuchernachfrage abzubilden."
+        help="Der Holiday Climate Index (HCI) bewertet die klimatische Eignung für Freizeitaktivitäten. Das Modell integriert diesen Index mit kalendarischen Faktoren zur Abbildung meteorologischer und saisonaler Einflüsse."
     )
 
     st.markdown("---")
 
-    # --- TABS ---
+    # --- REGISTERKARTEN ---
     tab1, tab2, tab3, tab4 = st.tabs(["Echtzeit-Monitor", "Modell-Erkenntnisse", "Prognose & Simulation", "Validierung"])
 
-    # TAB 1: ECHTZEIT
+    # TAB 1: ECHTZEIT-MONITOR
     with tab1:
         c_chart, c_table = st.columns([1.5, 1])
         with c_chart:
@@ -98,8 +104,6 @@ else:
         with c_table:
             st.subheader("Attraktionen")
             overview_df = snapshot[['ride_name', 'is_open', 'wait_time']].sort_values('wait_time', ascending=False)
-            
-            # Status Mapping
             overview_df['Status'] = overview_df['is_open'].map({True: 'Offen', False: 'Geschlossen'})
             
             def style_status(val):
@@ -107,7 +111,6 @@ else:
                 return f'color: {color}'
 
             styled_df = overview_df[['ride_name', 'Status', 'wait_time']].style.map(style_status, subset=['Status'])
-            
             st.dataframe(
                 styled_df,
                 column_config={
@@ -115,12 +118,10 @@ else:
                     "Status": "Status",
                     "wait_time": st.column_config.ProgressColumn("Wartezeit", format="%d min", min_value=0, max_value=120)
                 },
-                use_container_width=True,
-                hide_index=True,
-                height=600
+                use_container_width=True, hide_index=True, height=600
             )
 
-    # TAB 2: INSIGHTS (UNVERÄNDERT)
+    # TAB 2: MODELL-ERKENNTNISSE
     with tab2:
         if train_btn:
             trainer = PredictionModel()
@@ -128,7 +129,7 @@ else:
                 results = trainer.run_benchmark(df_ai)
                 st.session_state['trainer'] = trainer
                 st.session_state['benchmark'] = results
-            st.rerun() 
+            st.rerun()
         
         if 'benchmark' in st.session_state and 'trainer' in st.session_state:
             st.subheader("Signifikanz der Einflussfaktoren")
@@ -137,52 +138,40 @@ else:
             feature_map_de = {'hour': 'Uhrzeit', 'weekday': 'Wochentag', 'month': 'Monat', 'is_weekend': 'Wochenende', 'holiday_de_bw': 'Feiertag (DE)', 'holiday_fr_zone_b': 'Schulferien (FR)', 'holiday_ch_bs': 'Feiertag (CH)', 'temp': 'Temperatur', 'rain': 'Niederschlag', 'HCI_Urban': 'HCI', 'wait_time_lag_1': 'Latenz (10min)', 'wait_time_lag_6': 'Trend (1h)', 'ride_id': 'Attraktionstyp'}
 
             with fi_col1:
-                if 'rf' in st.session_state['trainer'].models:
-                    st.markdown("**Random Forest**")
-                    rf_model = st.session_state['trainer'].models['rf']
-                    imp_df_rf = pd.DataFrame({'Merkmal': [feature_map_de.get(f, f) for f in features], 'Wert': rf_model.feature_importances_}).sort_values('Wert', ascending=False).head(10)
-                    fig_imp1, ax_imp1 = plt.subplots(figsize=(5, 3))
-                    fig_imp1.patch.set_facecolor('#0E1117')
-                    sns.barplot(data=imp_df_rf, x='Wert', y='Merkmal', palette="magma", ax=ax_imp1)
-                    ax_imp1.set_xlabel("Gini-Impurity", color='white')
-                    ax_imp1.set_ylabel("", color='white')
-                    st.pyplot(fig_imp1)
+                st.markdown("**Random Forest**")
+                rf_model = st.session_state['trainer'].models['rf']
+                imp_df_rf = pd.DataFrame({'Merkmal': [feature_map_de.get(f, f) for f in features], 'Wert': rf_model.feature_importances_}).sort_values('Wert', ascending=False).head(10)
+                fig, ax = plt.subplots(figsize=(5, 3)); fig.patch.set_facecolor('#0E1117')
+                sns.barplot(data=imp_df_rf, x='Wert', y='Merkmal', palette="magma", ax=ax)
+                st.pyplot(fig)
 
             with fi_col2:
-                if 'gb' in st.session_state['trainer'].models:
-                    st.markdown("**Gradient Boosting**")
-                    gb_model = st.session_state['trainer'].models['gb']
-                    imp_df_gb = pd.DataFrame({'Merkmal': [feature_map_de.get(f, f) for f in features], 'Wert': gb_model.feature_importances_}).sort_values('Wert', ascending=False).head(10)
-                    fig_imp2, ax_imp2 = plt.subplots(figsize=(5, 3))
-                    fig_imp2.patch.set_facecolor('#0E1117')
-                    sns.barplot(data=imp_df_gb, x='Wert', y='Merkmal', palette="viridis", ax=ax_imp2)
-                    ax_imp2.set_xlabel("Relative Wichtigkeit", color='white')
-                    ax_imp2.set_ylabel("", color='white')
-                    st.pyplot(fig_imp2)
+                st.markdown("**Gradient Boosting**")
+                gb_model = st.session_state['trainer'].models['gb']
+                imp_df_gb = pd.DataFrame({'Merkmal': [feature_map_de.get(f, f) for f in features], 'Wert': gb_model.feature_importances_}).sort_values('Wert', ascending=False).head(10)
+                fig, ax = plt.subplots(figsize=(5, 3)); fig.patch.set_facecolor('#0E1117')
+                sns.barplot(data=imp_df_gb, x='Wert', y='Merkmal', palette="viridis", ax=ax)
+                st.pyplot(fig)
 
             st.divider()
             col_corr, col_dist = st.columns(2)
             with col_corr:
-                st.markdown("**Übergreifende Korrelationsmatrix (Alle Modelle)**")
+                st.markdown("**Übergreifende Korrelationsmatrix**")
                 num_cols = ['wait_time', 'temp', 'rain', 'HCI_Urban', 'hour']
                 corr = df_ai[num_cols].rename(columns={'wait_time': 'Wartezeit', 'temp': 'Temp', 'rain': 'Regen', 'HCI_Urban': 'HCI', 'hour': 'Std'}).corr()
-                fig_corr, ax_corr = plt.subplots(figsize=(5, 4))
-                fig_corr.patch.set_facecolor('#0E1117')
-                sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax_corr, cbar=False)
-                st.pyplot(fig_corr)
+                fig, ax = plt.subplots(figsize=(5, 4)); fig.patch.set_facecolor('#0E1117')
+                sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax, cbar=False)
+                st.pyplot(fig)
 
             with col_dist:
-                st.markdown("**Verteilung der Zielvariable (Wartezeit)**")
-                fig_dist, ax_dist = plt.subplots(figsize=(5, 4))
-                fig_dist.patch.set_facecolor('#0E1117')
-                sns.histplot(df_ai['wait_time'], bins=30, kde=True, color="#4c72b0", ax=ax_dist)
-                ax_dist.set_xlabel("Minuten", color='white')
-                ax_dist.set_ylabel("Anzahl", color='white')
-                st.pyplot(fig_dist)
+                st.markdown("**Verteilung der Zielvariable**")
+                fig, ax = plt.subplots(figsize=(5, 4)); fig.patch.set_facecolor('#0E1117')
+                sns.histplot(df_ai['wait_time'], bins=30, kde=True, color="#4c72b0", ax=ax)
+                ax.set_xlabel("Minuten"); st.pyplot(fig)
         else:
-            st.info("Die Modelle müssen erst trainiert werden. Bitte nutzen Sie dazu den Button 'Modelle trainieren' in der linken Seitenleiste.")
+            st.info("Die Modelle müssen erst trainiert werden. Bitte nutzen Sie dazu den Button in der linken Seitenleiste.")
 
-    # TAB 3: PROGNOSE (ÜBERARBEITET)
+    # TAB 3: PROGNOSE & SIMULATION
     with tab3:
         if 'trainer' not in st.session_state:
             st.warning("Bitte Modelle in Tab 2 initialisieren.")
@@ -193,30 +182,20 @@ else:
                 with st.container(border=True):
                     c_w, c_t = st.columns(2)
                     with c_w:
-                        st.markdown("**Wetterbedingungen**")
+                        st.markdown("**Wetterparameter**")
                         s_temp = st.slider("Temperatur (°C)", -5, 40, 25)
                         s_rain = st.slider("Regen (mm)", 0.0, 20.0, 0.0)
                         s_cloud = st.slider("Bewölkung (%)", 0, 100, 20)
                         sim_hci = (4 * max(0, 10-abs(s_temp-25)*0.5)) + (2 * (100-s_cloud)/10) + (3 * max(0, 10-s_rain*2)) + 10
-                        st.caption(f"Berechneter HCI: {sim_hci:.1f}")
                     with c_t:
-                        st.markdown("**Zeitliche Einordnung**")
+                        st.markdown("**Zeitparameter**")
                         s_hour = st.slider("Stunde", 9, 20, 14)
-                        
-                        # Korrekte Wochentags-Auswahl
-                        days_map = {0: "Montag", 1: "Dienstag", 2: "Mittwoch", 3: "Donnerstag", 4: "Freitag", 5: "Samstag", 6: "Sonntag"}
-                        s_day_name = st.selectbox("Wochentag", options=list(days_map.values()), index=5)
-                        s_weekday = [k for k, v in days_map.items() if v == s_day_name][0]
-                        
-                        # Separate Monats-Auswahl
-                        months_map = {1: "Januar", 2: "Februar", 3: "März", 4: "April", 5: "Mai", 6: "Juni", 7: "Juli", 8: "August", 9: "September", 10: "Oktober", 11: "November", 12: "Dezember"}
-                        s_month_name = st.selectbox("Monat", options=list(months_map.values()), index=6)
-                        s_month = [k for k, v in months_map.items() if v == s_month_name][0]
-                        
+                        s_day_name = st.selectbox("Wochentag", options=["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"], index=5)
+                        s_weekday = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"].index(s_day_name)
+                        s_month_name = st.selectbox("Monat", options=["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"], index=6)
+                        s_month = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"].index(s_month_name) + 1
                         cc1, cc2, cc3 = st.columns(3)
-                        s_hol_de = cc1.checkbox("Feiertag DE")
-                        s_hol_fr = cc2.checkbox("Ferien FR")
-                        s_hol_ch = cc3.checkbox("Feiertag CH")
+                        s_hol_de = cc1.checkbox("Feiertag DE"); s_hol_fr = cc2.checkbox("Ferien FR"); s_hol_ch = cc3.checkbox("Feiertag CH")
 
                 if st.button("Simulation starten", type="primary", use_container_width=True):
                     rides = df_ai['ride_name'].unique()
@@ -228,49 +207,42 @@ else:
                                 'hour': s_hour, 'weekday': s_weekday, 'month': s_month, 'is_weekend': 1 if s_weekday>=5 else 0,
                                 'holiday_de_bw': int(s_hol_de), 'holiday_fr_zone_b': int(s_hol_fr), 'holiday_ch_bs': int(s_hol_ch),
                                 'temp': s_temp, 'rain': s_rain, 'HCI_Urban': sim_hci,
-                                'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'],
-                                'ride_id': rid_meta['ride_id']
+                                'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'], 'ride_id': rid_meta['ride_id']
                             }])
                             preds = st.session_state['trainer'].predict_ensemble(inp)
-                            row = {'Attraktion': r}
-                            row.update(preds)
-                            rows.append(row)
+                            row = {'Attraktion': r}; row.update(preds); rows.append(row)
                         except: continue
                     
                     if rows:
-                        res_df = pd.DataFrame(rows)
+                        res_df = pd.DataFrame(rows).set_index('Attraktion')
+                        res_df['Konsens'] = res_df.mean(axis=1)
+                        res_df['Abweichung (StdDev)'] = res_df.std(axis=1)
+
                         st.subheader("Vergleichende Simulationsergebnisse")
                         
-                        # 1. Grafik: Top 10 Attraktionen
-                        melted_sim = res_df.melt(id_vars='Attraktion', var_name='Modell', value_name='Prognose')
-                        fig_sim, ax_sim = plt.subplots(figsize=(12, 6))
-                        fig_sim.patch.set_facecolor('#0E1117')
-                        top_rides = res_df.head(10)['Attraktion'].tolist()
-                        sns.barplot(data=melted_sim[melted_sim['Attraktion'].isin(top_rides)], x='Prognose', y='Attraktion', hue='Modell', palette="viridis", ax=ax_sim)
-                        ax_sim.set_xlabel("Prognostizierte Wartezeit (Minuten)", color='white')
-                        st.pyplot(fig_sim)
-                        
-                        # 2. Detail-Tabellen in Spalten
-                        st.markdown("---")
-                        st.markdown("**Detaillierte Prognose-Analysen**")
-                        col_list, col_diff = st.columns(2)
-                        
-                        with col_list:
-                            st.markdown("🔍 **Zufällige Stichprobe (10 Attraktionen)**")
-                            st.dataframe(res_df.sample(min(len(res_df), 10)).set_index('Attraktion'), use_container_width=True)
-                        
-                        with col_diff:
-                            st.markdown("📉 **Größte Varianz zwischen den Modellen**")
-                            # Berechne Differenz zwischen RF und GB als Indikator für Unsicherheit
-                            res_df['Varianz (RF vs GB)'] = abs(res_df['Random Forest'] - res_df['Gradient Boosting'])
-                            st.dataframe(res_df.sort_values('Varianz (RF vs GB)', ascending=False).head(10).drop(columns=['Varianz (RF vs GB)']).set_index('Attraktion'), use_container_width=True)
+                        col_plot, col_info = st.columns([2, 1])
+                        with col_plot:
+                            st.markdown("**Prognose-Übersicht (Top 10)**")
+                            melted = res_df.reset_index().melt(id_vars='Attraktion', var_name='Modell', value_name='Minuten')
+                            top_rides = res_df.sort_values('Konsens', ascending=False).head(10).index.tolist()
+                            fig, ax = plt.subplots(figsize=(10, 6)); fig.patch.set_facecolor('#0E1117')
+                            sns.barplot(data=melted[melted['Attraktion'].isin(top_rides)], x='Minuten', y='Attraktion', hue='Modell', palette="viridis", ax=ax)
+                            st.pyplot(fig)
+
+                        with col_info:
+                            st.markdown("**Modell-Diskordanz**")
+                            st.caption("Attraktionen mit der höchsten Prognose-Varianz (Unsicherheit).")
+                            st.dataframe(res_df[['Abweichung (StdDev)']].sort_values('Abweichung (StdDev)', ascending=False).head(5), use_container_width=True)
+                            st.markdown("**Stichprobe**")
+                            st.caption("Zufällige Auswahl von 10 Attraktionen zum Quervergleich.")
+                            st.dataframe(res_df.sample(min(10, len(res_df)))[['Random Forest', 'Gradient Boosting', 'LSTM']], use_container_width=True)
 
             with subtab_live:
                 latest_date = df_raw['datetime'].max().date()
                 df_today = df_raw[df_raw['datetime'].dt.date == latest_date].copy()
                 
                 if df_today.empty:
-                    st.error("Keine Daten für Heute.")
+                    st.error("Keine Daten für den heutigen Zeitraum verfügbar.")
                 else:
                     snapshot_now = df_today[df_today['datetime'] == df_today['datetime'].max()]
                     current_weather = snapshot_now.iloc[0]
@@ -288,42 +260,36 @@ else:
                                 'is_weekend': 1 if pd.to_datetime(current_weather['datetime']).weekday() >= 5 else 0,
                                 'holiday_de_bw': rid_meta['holiday_de_bw'], 'holiday_fr_zone_b': rid_meta['holiday_fr_zone_b'], 'holiday_ch_bs': rid_meta['holiday_ch_bs'],
                                 'temp': current_weather['temp'], 'rain': current_weather['rain'], 'HCI_Urban': hci_score,
-                                'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'],
-                                'ride_id': rid_meta['ride_id']
+                                'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'], 'ride_id': rid_meta['ride_id']
                             }])
                             preds = st.session_state['trainer'].predict_ensemble(inp_now)
-                            row = {'Attraktion': r, 'Messwert (Ist)': real_val}
-                            row.update(preds)
-                            rows_live.append(row)
+                            row = {'Attraktion': r, 'Messwert (Ist)': real_val}; row.update(preds); rows_live.append(row)
                         except: continue
                     
                     if rows_live:
-                        live_df = pd.DataFrame(rows_live)
-                        st.subheader(f"Echtzeit-Validierung ({latest_date})")
+                        live_df = pd.DataFrame(rows_live).set_index('Attraktion')
+                        st.subheader(f"Abgleich mit Echtzeitdaten ({latest_date})")
+                        st.info("Diese Ansicht quantifiziert die Modellkalibrierung. Die Streuung zwischen Ist-Werten und Prognosen indiziert die aktuelle Vorhersagegüte unter Berücksichtigung operativer Einflüsse.")
                         
-                        # Erklärung der Aussage
-                        st.info("""
-                        **Interpretation der Ergebnisse:**
-                        Diese Ansicht vergleicht die aktuellen Messwerte ("Ist-Zustand") mit den Prognosen der drei Algorithmen. 
-                        Ein geringer Abstand zwischen den Balken deutet auf eine hohe Vorhersagegenauigkeit hin. Abweichungen (Deltas) 
-                        entstehen oft durch unvorhersehbare operative Ereignisse wie technische Störungen oder kurzfristige Kapazitätsänderungen.
-                        """)
+                        col_scatter, col_metrics = st.columns([2, 1])
+                        with col_scatter:
+                            st.markdown("**Kalibrierungs-Plot (Ist vs. Prognose-Mittelwert)**")
+                            live_df['Mittelwert_Prognose'] = live_df[['Random Forest', 'Gradient Boosting', 'LSTM']].mean(axis=1)
+                            fig, ax = plt.subplots(figsize=(8, 5)); fig.patch.set_facecolor('#0E1117')
+                            sns.scatterplot(data=live_df, x='Messwert (Ist)', y='Mittelwert_Prognose', color="#4c72b0", ax=ax)
+                            ax.plot([0, 120], [0, 120], color='white', linestyle='--', alpha=0.5)
+                            ax.set_xlim(0, 120); ax.set_ylim(0, 120)
+                            st.pyplot(fig)
                         
-                        # Grafik
-                        melted = live_df.melt(id_vars='Attraktion', var_name='Datenquelle', value_name='Minuten')
-                        fig_check, ax_check = plt.subplots(figsize=(12, 6))
-                        fig_check.patch.set_facecolor('#0E1117')
-                        palette = {"Messwert (Ist)": "#ff4b4b", "Random Forest": "#4c72b0", "Gradient Boosting": "#55a868", "LSTM": "#8172b2"}
-                        top_attractions_live = live_df.sort_values('Messwert (Ist)', ascending=False).head(8)['Attraktion'].tolist()
-                        sns.barplot(data=melted[melted['Attraktion'].isin(top_attractions_live)], x='Minuten', y='Attraktion', hue='Datenquelle', palette=palette, ax=ax_check)
-                        st.pyplot(fig_check)
-                        
-                        # Ergänzende Abweichungstabelle
-                        st.markdown("**Präzisions-Check (Abweichungen)**")
-                        live_df['Fehler (RF)'] = abs(live_df['Random Forest'] - live_df['Messwert (Ist)'])
-                        st.dataframe(live_df[['Attraktion', 'Messwert (Ist)', 'Random Forest', 'Fehler (RF)']].sort_values('Fehler (RF)', ascending=False).set_index('Attraktion'), use_container_width=True)
+                        with col_metrics:
+                            st.markdown("**Präzisions-Metrik**")
+                            mae = abs(live_df['Messwert (Ist)'] - live_df['Mittelwert_Prognose']).mean()
+                            st.metric("Mittlerer absoluter Fehler (MAE)", f"{mae:.2f} min")
+                            st.markdown("**Größte Abweichungen**")
+                            live_df['Fehler'] = abs(live_df['Messwert (Ist)'] - live_df['Random Forest'])
+                            st.dataframe(live_df[['Messwert (Ist)', 'Random Forest', 'Fehler']].sort_values('Fehler', ascending=False).head(5), use_container_width=True)
 
-    # TAB 4: VALIDIERUNG (UNVERÄNDERT)
+    # TAB 4: VALIDIERUNG
     with tab4:
         if 'benchmark' in st.session_state:
             res = st.session_state['benchmark']
@@ -332,44 +298,30 @@ else:
             cols = st.columns(len(res))
             for idx, (name, metrics) in enumerate(res.items()):
                 with cols[idx]:
-                    rmse_val = metrics['rmse']
-                    r2_val = metrics['r2']
                     if name == best_model_name:
-                        st.success(f"🏆 {name} (Beste Präzision)")
-                        st.metric(label="RMSE (Fehler)", value=f"{rmse_val:.2f} min", delta="Minimum", delta_color="inverse")
-                        st.metric(label="R² (Erklärungskraft)", value=f"{r2_val:.2f}", delta="Maximum")
+                        st.success(f"{name} (Bestwert)")
+                        st.metric(label="RMSE (Fehler)", value=f"{metrics['rmse']:.2f} min", delta="Minimum", delta_color="inverse")
+                        st.metric(label="R² (Erklärungskraft)", value=f"{metrics['r2']:.2f}", delta="Maximum")
                     else:
                         st.info(f"{name}")
-                        st.metric(label="RMSE (Fehler)", value=f"{rmse_val:.2f} min")
-                        st.metric(label="R² (Erklärungskraft)", value=f"{r2_val:.2f}")
+                        st.metric(label="RMSE (Fehler)", value=f"{metrics['rmse']:.2f} min")
+                        st.metric(label="R² (Erklärungskraft)", value=f"{metrics['r2']:.2f}")
+
             st.divider()
             st.subheader("Zeitreihen-Validierung (Test-Sample)")
-            first_key = list(res.keys())[0]
-            limit = 100 
-            actuals = res[first_key]['actuals'][:limit]
-            df_plot = pd.DataFrame({'Messwert (Ist)': actuals})
+            first_key = list(res.keys())[0]; limit = 100; actuals = res[first_key]['actuals'][:limit]
+            df_plot = pd.DataFrame({'Ist': actuals})
+            for name, metrics in res.items(): df_plot[name] = metrics['predictions'][:limit]
+            fig, ax = plt.subplots(figsize=(12, 4)); fig.patch.set_facecolor('#0E1117')
+            sns.lineplot(data=df_plot, ax=ax, linewidth=1.5); st.pyplot(fig)
+
+            st.subheader("Residuenanalyse")
+            res_data = pd.DataFrame(); limit_res = 300; actuals_res = res[first_key]['actuals'][:limit_res]
             for name, metrics in res.items():
-                df_plot[name] = metrics['predictions'][:limit]
-            fig_line, ax_line = plt.subplots(figsize=(12, 4))
-            fig_line.patch.set_facecolor('#0E1117')
-            sns.lineplot(data=df_plot, ax=ax_line, linewidth=1.5)
-            ax_line.set_ylabel("Minuten", color='white')
-            ax_line.set_xlabel("Zeitpunkte", color='white')
-            st.pyplot(fig_line)
-            st.subheader("Residuenanalyse (Fehlerverteilung)")
-            res_data = pd.DataFrame()
-            limit_res = 300
-            actuals_res = res[first_key]['actuals'][:limit_res]
-            for name, metrics in res.items():
-                residuals = actuals_res - metrics['predictions'][:limit_res]
-                temp = pd.DataFrame({'Residuum': residuals, 'Algorithmus': name})
+                temp = pd.DataFrame({'Residuum': actuals_res - metrics['predictions'][:limit_res], 'Algorithmus': name})
                 res_data = pd.concat([res_data, temp])
-            fig_res, ax_res = plt.subplots(figsize=(10, 4))
-            fig_res.patch.set_facecolor('#0E1117')
-            sns.kdeplot(data=res_data, x='Residuum', hue='Algorithmus', fill=True, alpha=0.3, ax=ax_res)
-            ax_res.axvline(0, color='white', linestyle='--', linewidth=1)
-            ax_res.set_xlabel("Abweichung (Minuten)", color='white')
-            ax_res.set_ylabel("Dichte", color='white')
-            st.pyplot(fig_res)
+            fig, ax = plt.subplots(figsize=(10, 4)); fig.patch.set_facecolor('#0E1117')
+            sns.kdeplot(data=res_data, x='Residuum', hue='Algorithmus', fill=True, alpha=0.3, ax=ax)
+            ax.axvline(0, color='white', linestyle='--', linewidth=1); st.pyplot(fig)
         else:
             st.info("Bitte Training durchführen.")
