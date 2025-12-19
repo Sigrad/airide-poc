@@ -1,48 +1,39 @@
-import streamlit as st
-import pandas as pd
-from data_collector import DataCollector
-from feature_engineering import FeatureEngineering
-from prediction_model import PredictionModel
+                            st.markdown("**Metriken**"); mae = abs(live_df['Ist'] - live_df['Prognose_Schnitt']).mean(); st.metric("MAE", f"{mae:.2f} min"); st.markdown("**Modell-Abweichungen**"); live_df['Abs_Fehler'] = abs(live_df['Ist'] - live_df['Random Forest']); st.dataframe(live_df[['Ist', 'Random Forest', 'Abs_Fehler']].sort_values('Abs_Fehler', ascending=False).head(5), use_container_width=True)
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="AIRide Analyse", layout="wide")
+    # TAB 4: VALIDIERUNG (GEÄNDERT)
+    with tab4:
+        if 'benchmark' in st.session_state:
+            res = st.session_state['benchmark']
+            
+            # --- 1. PERFORMANCE-METRIKEN ---
+            st.subheader("Performance-Metriken")
+            best_model_name = min(res, key=lambda k: res[k]['rmse'])
+            cols = st.columns(len(res))
+            
+            for idx, (name, metrics) in enumerate(res.items()):
+                with cols[idx]:
+                    if name == best_model_name:
+                        st.success(f"{name}")
+                        st.metric(label="RMSE (Fehler)", value=f"{metrics['rmse']:.2f} min", delta="Minimum", delta_color="inverse")
+                        st.metric(label="R² (Erklärungskraft)", value=f"{metrics['r2']:.2f}", delta="Maximum")
+                    else:
+                        st.info(f"{name}")
+                        st.metric(label="RMSE (Fehler)", value=f"{metrics['rmse']:.2f} min")
+                        st.metric(label="R² (Erklärungskraft)", value=f"{metrics['r2']:.2f}")
 
-@st.cache_data(ttl=60)
-def load_data():
-    collector = DataCollector()
-    df_raw = collector.fetch_historical_data()
-    if df_raw.empty: return pd.DataFrame(), pd.DataFrame()
-    
-    engine = FeatureEngineering()
-    df_processed = engine.process_data(df_raw)
-    return df_raw, df_processed
+            st.divider()
 
-df_raw, df_ai = load_data()
-
-if df_raw.empty:
-    st.error("Keine Daten gefunden. Bitte CSV oder API prüfen.")
-else:
-    # Use 'datetime' column ensured by FeatureEngineering
-    latest_ts = df_ai['datetime'].max()
-    snapshot = df_ai[df_ai['datetime'] == latest_ts]
-    
-    st.title("AIRide Dashboard")
-    
-    # KPI Row
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Letztes Update", latest_ts.strftime('%H:%M'))
-    c2.metric("Ø Wartezeit", f"{snapshot['wait_time'].mean():.1f} min")
-    c3.metric("Wetter", f"{snapshot['temp'].iloc[0]} °C")
-
-    # Tabs
-    tab1, tab2 = st.tabs(["Monitor", "Training"])
-    
-    with tab1:
-        st.dataframe(snapshot[['ride_name', 'wait_time', 'is_open']])
-        
-    with tab2:
-        if st.button("Training starten"):
-            trainer = PredictionModel()
-            results = trainer.run_benchmark(df_ai)
-            st.session_state['trainer'] = trainer
-            st.write(results)
+            # --- 2. GRAFIKEN NEBENEINANDER ---
+            g_col1, g_col2 = st.columns(2)
+            
+            first_key = list(res.keys())[0]
+            limit_line = 100 
+            actuals = res[first_key]['actuals']
+            
+            with g_col1:
+                st.subheader("Zeitreihen-Validierung")
+                df_plot = pd.DataFrame({'Ist': actuals[:limit_line]})
+                for name, metrics in res.items():
+                    df_plot[name] = metrics['predictions'][:limit_line]
+                
+                fig_line, ax_line = plt.subplots(figsize=(6, 4))
