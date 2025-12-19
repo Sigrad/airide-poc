@@ -73,7 +73,7 @@ else:
     st.markdown("---")
 
     # --- TABS ---
-    tab1, tab2, tab3, tab4 = st.tabs(["Live Analyse", "KI & Modell Insights", "Prognose & Simulation", "Modell-Benchmark"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Live Analyse", "KI & Modell Insights", "Prognose & Simulation", "Modell-Validierung"])
 
     # TAB 1: LIVE
     with tab1:
@@ -99,7 +99,7 @@ else:
                 return styler
             st.dataframe(overview_df.style.pipe(style_dark), use_container_width=True, hide_index=True)
 
-    # TAB 2: TRAINING
+    # TAB 2: INSIGHTS & FEATURE ENGINEERING
     with tab2:
         if train_btn:
             trainer = PredictionModel()
@@ -107,30 +107,73 @@ else:
                 results = trainer.run_benchmark(df_ai)
                 st.session_state['trainer'] = trainer
                 st.session_state['benchmark'] = results
-            st.success("Benchmark abgeschlossen!")
+            st.success("Training abgeschlossen!")
         
-        if 'benchmark' in st.session_state:
-            res = st.session_state['benchmark']
-            best_model_name = min(res, key=lambda k: res[k]['rmse'])
+        # Display Feature Analysis regardless of model training
+        st.subheader("Feature Engineering & Daten-Analyse")
+        
+        col_corr, col_dist = st.columns(2)
+        
+        with col_corr:
+            st.markdown("**Korrelations-Matrix (Einflussfaktoren)**")
+            st.caption("Wie stark hängen Wetter, Zeit und Wartezeiten zusammen?")
+            # Filter numerical cols
+            num_cols = ['wait_time', 'temp', 'rain', 'HCI_Urban', 'hour', 'month']
+            corr = df_ai[num_cols].corr()
             
-            st.subheader(f"Gewinner: {best_model_name}")
-            m1, m2 = st.columns(2)
-            m1.metric("Best RMSE", f"{res[best_model_name]['rmse']:.2f}")
-            m2.metric("Best R²", f"{res[best_model_name]['r2']:.2f}")
-            st.info("Details siehe Tab 'Modell-Benchmark'")
-        else:
-            st.info("Bitte Training starten.")
+            fig_corr, ax_corr = plt.subplots(figsize=(6, 5))
+            fig_corr.patch.set_facecolor('#0E1117')
+            sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax_corr, cbar=False)
+            st.pyplot(fig_corr)
 
-    # TAB 3: SIMULATION (Restored & Upgraded)
+        with col_dist:
+            st.markdown("**Verteilung der Wartezeiten (Ground Truth)**")
+            st.caption("Häufigkeitsverteilung der gemessenen Wartezeiten im Datensatz.")
+            fig_dist, ax_dist = plt.subplots(figsize=(6, 5))
+            fig_dist.patch.set_facecolor('#0E1117')
+            sns.histplot(df_ai['wait_time'], bins=30, kde=True, color="#4c72b0", ax=ax_dist)
+            ax_dist.set_xlabel("Wartezeit (Minuten)", color='white')
+            st.pyplot(fig_dist)
+
+        # Feature Importance (if model is trained)
+        if 'benchmark' in st.session_state:
+            st.subheader("Feature Importance (Random Forest)")
+            # Extract Feature Importance from Random Forest (assumed to be available)
+            # Since the new benchmark structure is different, we access the RF model directly if possible
+            # or we re-calculate/access stored importance if saved. 
+            # For simplicity, we assume the trainer object stores the RF model.
+            
+            if 'trainer' in st.session_state and 'rf' in st.session_state['trainer'].models:
+                rf_model = st.session_state['trainer'].models['rf']
+                features = ['hour', 'weekday', 'month', 'is_weekend', 
+                            'holiday_de_bw', 'holiday_fr_zone_b', 'holiday_ch_bs',
+                            'temp', 'rain', 'HCI_Urban', 
+                            'wait_time_lag_1', 'wait_time_lag_6', 'ride_id']
+                
+                imp_df = pd.DataFrame({
+                    'Feature': features,
+                    'Importance': rf_model.feature_importances_
+                }).sort_values('Importance', ascending=False).head(10)
+                
+                fig_imp, ax_imp = plt.subplots(figsize=(10, 4))
+                fig_imp.patch.set_facecolor('#0E1117')
+                sns.barplot(data=imp_df, x='Importance', y='Feature', palette="magma", ax=ax_imp)
+                ax_imp.set_xlabel("Signifikanz", color='white')
+                ax_imp.set_ylabel("", color='white')
+                st.pyplot(fig_imp)
+        else:
+            st.info("Trainieren Sie die Modelle, um die Feature Importance zu sehen.")
+
+    # TAB 3: SIMULATION
     with tab3:
         if 'trainer' not in st.session_state:
             st.warning("Kein Modell trainiert. Bitte in Tab 2 trainieren.")
         else:
             subtab_sim, subtab_live = st.tabs(["Manueller Simulator", "Tages-Replay (Heute)"])
             
-            # --- SUBTAB 1: MANUAL SIMULATOR ---
+            # --- SUBTAB 1: MANUAL ---
             with subtab_sim:
-                st.markdown("Konfigurieren Sie ein hypothetisches Szenario und vergleichen Sie alle Modelle.")
+                st.markdown("Konfigurieren Sie ein hypothetisches Szenario. Die Grafik vergleicht die Prognosen aller Modelle.")
                 
                 with st.container(border=True):
                     col_weather, col_time = st.columns(2)
@@ -172,17 +215,28 @@ else:
                                     'ride_id': rid_meta['ride_id']
                                 }])
                                 
-                                # Get predictions from ALL models
                                 preds = st.session_state['trainer'].predict_ensemble(inp)
-                                
                                 row = {'Attraktion': r}
-                                row.update(preds) # Add RF, GB, LSTM columns
+                                row.update(preds)
                                 rows.append(row)
                             except: continue
                     
                     if rows:
-                        res_df = pd.DataFrame(rows).set_index('Attraktion')
-                        st.dataframe(res_df.style.highlight_max(axis=0), use_container_width=True)
+                        res_df = pd.DataFrame(rows)
+                        
+                        # Graph Visualization
+                        st.markdown("#### Modell-Vergleich (Simulation)")
+                        melted_sim = res_df.melt(id_vars='Attraktion', var_name='Modell', value_name='Minuten')
+                        
+                        fig_sim, ax_sim = plt.subplots(figsize=(12, 6))
+                        fig_sim.patch.set_facecolor('#0E1117')
+                        sns.barplot(data=melted_sim, x='Minuten', y='Attraktion', hue='Modell', palette="viridis", ax=ax_sim)
+                        ax_sim.set_ylabel("", color='white')
+                        ax_sim.set_xlabel("Prognostizierte Wartezeit (min)", color='white')
+                        st.pyplot(fig_sim)
+
+                        # Data Table
+                        st.dataframe(res_df.set_index('Attraktion'), use_container_width=True)
 
             # --- SUBTAB 2: REALITY CHECK ---
             with subtab_live:
@@ -193,17 +247,8 @@ else:
                 if df_today.empty:
                     st.error("Keine Daten für Heute.")
                 else:
-                    # Determine open times
-                    open_mask = df_today[df_today['is_open'] == True]
-                    if not open_mask.empty:
-                        start_time = open_mask['datetime'].min().strftime('%H:%M')
-                        st.info(f"Parköffnung heute erkannt um: {start_time}")
-                    
-                    # Get latest snapshot
                     snapshot_now = df_today[df_today['datetime'] == df_today['datetime'].max()]
                     current_weather = snapshot_now.iloc[0]
-                    
-                    # Prepare input params from reality
                     current_hour = pd.to_datetime(current_weather['datetime']).hour
                     current_weekday = pd.to_datetime(current_weather['datetime']).weekday()
                     
@@ -232,50 +277,105 @@ else:
                                     'ride_id': rid_meta['ride_id']
                                 }])
                                 
-                                # Predict all models
                                 preds = st.session_state['trainer'].predict_ensemble(inp_now)
-                                
                                 row = {'Attraktion': r, 'Realität (Ist)': real_val}
                                 row.update(preds)
                                 rows_live.append(row)
                             except: continue
                     
                     if rows_live:
-                        live_df = pd.DataFrame(rows_live).set_index('Attraktion')
+                        live_df = pd.DataFrame(rows_live)
                         
-                        st.markdown("#### Vergleichstabelle")
-                        st.caption("Vergleich: Echte Wartezeit vs. KI-Prognosen")
-                        st.dataframe(live_df, use_container_width=True)
+                        # Visualization
+                        st.markdown("#### Vergleich: Modelle vs Realität")
+                        st.caption("Vergleich aller Modelle gegen die echte Wartezeit (Momentaufnahme).")
+                        
+                        melted = live_df.melt(id_vars='Attraktion', var_name='Quelle', value_name='Minuten')
+                        
+                        fig_check, ax_check = plt.subplots(figsize=(12, 6))
+                        fig_check.patch.set_facecolor('#0E1117')
+                        
+                        # Highlight Reality with specific color, models with palette
+                        sns.barplot(data=melted, x='Minuten', y='Attraktion', hue='Quelle', ax=ax_check)
+                        ax_check.set_ylabel("", color='white')
+                        ax_check.set_xlabel("Minuten", color='white')
+                        st.pyplot(fig_check)
+                        
+                        st.dataframe(live_df.set_index('Attraktion'), use_container_width=True)
 
     # TAB 4: BENCHMARK
     with tab4:
         if 'benchmark' in st.session_state:
             res = st.session_state['benchmark']
-            st.markdown("### Battle of Algorithms")
+            st.markdown("### Modell-Validierung & Performance")
             
-            metrics_data = []
+            # 1. Metrics Comparison Chart
+            metrics_list = []
             for name, metrics in res.items():
-                metrics_data.append({
-                    "Modell": name,
-                    "RMSE": metrics['rmse'],
-                    "R²": metrics['r2'],
-                    "MAE": metrics['mae']
-                })
-            st.dataframe(pd.DataFrame(metrics_data).set_index("Modell"), use_container_width=True)
+                metrics_list.append({'Modell': name, 'Metric': 'RMSE', 'Value': metrics['rmse']})
+                metrics_list.append({'Modell': name, 'Metric': 'R²', 'Value': metrics['r2']})
             
-            st.markdown("### Visueller Vergleich (Test-Set)")
-            df_plot = pd.DataFrame()
+            met_df = pd.DataFrame(metrics_list)
+            
+            col_met1, col_met2 = st.columns(2)
+            with col_met1:
+                st.markdown("**Fehlermetrik (RMSE)** (niedriger = besser)")
+                fig_rmse, ax_rmse = plt.subplots(figsize=(5, 3))
+                fig_rmse.patch.set_facecolor('#0E1117')
+                sns.barplot(data=met_df[met_df['Metric']=='RMSE'], x='Modell', y='Value', palette="Reds_d", ax=ax_rmse)
+                ax_rmse.set_xlabel("", color='white')
+                ax_rmse.set_ylabel("Minuten", color='white')
+                st.pyplot(fig_rmse)
+                
+            with col_met2:
+                st.markdown("**Erklärungsquote (R²)** (höher = besser)")
+                fig_r2, ax_r2 = plt.subplots(figsize=(5, 3))
+                fig_r2.patch.set_facecolor('#0E1117')
+                sns.barplot(data=met_df[met_df['Metric']=='R²'], x='Modell', y='Value', palette="Greens_d", ax=ax_r2)
+                ax_r2.set_xlabel("", color='white')
+                ax_r2.set_ylabel("Score (0-1)", color='white')
+                st.pyplot(fig_r2)
+            
+            st.markdown("---")
+            
+            # 2. Residual Plot (Professional Validation)
+            st.markdown("### Fehlerverteilung (Residual Plot)")
+            st.caption("Verteilung der Abweichungen (Ist - Soll). Eine Zentrierung um 0 deutet auf ein gutes Modell hin.")
+            
+            # Calculate residuals
+            res_data = pd.DataFrame()
             first_key = list(res.keys())[0]
-            limit = 50
-            df_plot['Ground Truth'] = res[first_key]['actuals'][:limit]
+            # Use limited slice for cleaner plot
+            limit = 200 
+            actuals = res[first_key]['actuals'][:limit]
             
             for name, metrics in res.items():
-                df_plot[name] = metrics['predictions'][:limit]
+                preds = metrics['predictions'][:limit]
+                residuals = actuals - preds
+                temp_df = pd.DataFrame({'Residuals': residuals, 'Modell': name})
+                res_data = pd.concat([res_data, temp_df])
             
-            fig, ax = plt.subplots(figsize=(10, 5))
-            fig.patch.set_facecolor('#0E1117')
-            sns.lineplot(data=df_plot, ax=ax, linewidth=2)
-            ax.set_ylabel("Wartezeit (min)", color='white')
-            st.pyplot(fig)
+            fig_res, ax_res = plt.subplots(figsize=(10, 5))
+            fig_res.patch.set_facecolor('#0E1117')
+            sns.kdeplot(data=res_data, x='Residuals', hue='Modell', fill=True, alpha=0.3, ax=ax_res)
+            ax_res.axvline(0, color='white', linestyle='--', linewidth=1)
+            ax_res.set_xlabel("Abweichung in Minuten (Residual)", color='white')
+            st.pyplot(fig_res)
+
+            # 3. Line Chart
+            st.markdown("### Zeitreihen-Vergleich")
+            st.caption("Vergleich der Vorhersagen auf einem Ausschnitt des Test-Sets.")
+            
+            df_plot = pd.DataFrame()
+            df_plot['Ground Truth'] = actuals[:50] # Zoom in
+            for name, metrics in res.items():
+                df_plot[name] = metrics['predictions'][:50]
+            
+            fig_line, ax_line = plt.subplots(figsize=(12, 5))
+            fig_line.patch.set_facecolor('#0E1117')
+            sns.lineplot(data=df_plot, ax=ax_line, linewidth=2)
+            ax_line.set_ylabel("Wartezeit (min)", color='white')
+            st.pyplot(fig_line)
+            
         else:
             st.info("Bitte Modell im Tab 2 trainieren.")
