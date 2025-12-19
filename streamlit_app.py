@@ -155,7 +155,7 @@ else:
             st.info("Die Modelle müssen erst trainiert werden. Bitte nutzen Sie dazu den 'Modelle tranieren' Taste innerhalb der linken Seitenleiste.")
 
     # TAB 3: Prognose and Sim
-with tab3:
+    with tab3:
         if 'trainer' not in st.session_state:
             st.warning("Bitte Modelle in Tab 2 initialisieren.")
         else:
@@ -232,7 +232,7 @@ with tab3:
                     snapshot_now = df_today[df_today['datetime'] == latest_dt]
                     current_weather = snapshot_now.iloc[0]
                     rows_live = []
-
+                    
     # TAB 4: Validation
     with tab4:
         if 'benchmark' in st.session_state:
