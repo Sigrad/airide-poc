@@ -67,7 +67,12 @@ else:
     c1.metric("Letzte Aktualisierung", latest_ts.strftime('%H:%M'))
     c2.metric("Offene Attraktionen", len(open_rides))
     c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
-    c4.metric("HCI", f"{hci_score:.0f}/100")
+    
+    c4.metric(
+        "HCI", 
+        f"{hci_score:.0f}/100", 
+        help="Der Holiday Climate Index (HCI) bewertet die klimatische Eignung für Freizeitaktivitäten. Das Modell integriert diesen Index mit kalendarischen Faktoren (Feiertage, Schulferien), um sowohl den meteorologischen als auch den saisonalen Einfluss auf die Besuchernachfrage abzubilden."
+    )
 
     st.markdown("---")
 
@@ -302,26 +307,20 @@ else:
                         ax_check.set_xlabel("Wartezeit (Minuten)", color='white')
                         st.pyplot(fig_check)
 
-    # TAB 4: VALIDIERUNG (NEU GESTALTET)
+    # TAB 4: VALIDIERUNG
     with tab4:
         if 'benchmark' in st.session_state:
             res = st.session_state['benchmark']
             
-            # --- 1. KPI CARDS (Beweis für Random Forest) ---
+            # 1. KPI CARDS
             st.subheader("Performance-Metriken (Testdatensatz)")
-            
-            # Finde bestes Modell basierend auf RMSE
             best_model_name = min(res, key=lambda k: res[k]['rmse'])
-            
-            # Erstelle Spalten für jedes Modell
             cols = st.columns(len(res))
             
             for idx, (name, metrics) in enumerate(res.items()):
                 with cols[idx]:
                     rmse_val = metrics['rmse']
                     r2_val = metrics['r2']
-                    
-                    # Highlight für den Sieger
                     if name == best_model_name:
                         st.success(f"🏆 {name} (Beste Präzision)")
                         st.metric(label="RMSE (Fehler)", value=f"{rmse_val:.2f} min", delta="Minimum", delta_color="inverse")
@@ -333,9 +332,8 @@ else:
 
             st.divider()
 
-            # --- 2. Zeitreihen-Validierung ---
+            # 2. Zeitreihen
             st.subheader("Zeitreihen-Validierung (Test-Sample)")
-            
             first_key = list(res.keys())[0]
             limit = 100 
             actuals = res[first_key]['actuals'][:limit]
@@ -351,7 +349,7 @@ else:
             ax_line.set_xlabel("Zeitpunkte", color='white')
             st.pyplot(fig_line)
 
-            # --- 3. Residuenanalyse ---
+            # 3. Residuen
             st.subheader("Residuenanalyse (Fehlerverteilung)")
             res_data = pd.DataFrame()
             limit_res = 300
