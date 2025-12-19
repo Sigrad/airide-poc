@@ -175,21 +175,21 @@ else:
             
             imp_df = m['feature_importance'].head(12).copy() # Zeige Top 12 damit man alles sieht
             
-            # --- HIER WAR DER FEHLER: DAS VOLLSTÄNDIGE MAPPING ---
+            # --- MAPPING: Jetzt mit DE, FR, CH ---
             feature_map = {
                 'hour': 'Tageszeit (Stunde)', 
                 'temp': 'Temperatur', 
                 'ride_id': 'Attraktionstyp',
                 'wait_time_lag_1': 'Momentum (10min)',
-                'wait_time_lag_6': 'Trend (1h)',          # NEU HINZUGEFÜGT
+                'wait_time_lag_6': 'Trend (1h)',          
                 'HCI_Urban': 'Wetter Index (HCI)',
                 'weekday': 'Wochentag',
-                'is_weekend': 'Wochenende',               # NEU HINZUGEFÜGT
-                'month': 'Monat (Saison)',                # NEU HINZUGEFÜGT
+                'is_weekend': 'Wochenende',               
+                'month': 'Monat (Saison)',                
                 'rain': 'Regenmenge',
-                'holiday_de_bw': 'Schulferien (BW)',
-                'holiday_fr_zone_b': 'Schulferien (FR)',
-                'holiday_ch_bs': 'Feiertage (CH)'
+                'holiday_de_bw': 'Schulferien (DE)',    # Angepasst auf DE
+                'holiday_fr_zone_b': 'Schulferien (FR)',# Angepasst auf FR
+                'holiday_ch_bs': 'Schulferien (CH)'     # Angepasst auf CH
             }
             # -----------------------------------------------------
             
