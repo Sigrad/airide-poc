@@ -128,7 +128,7 @@ else:
                 results = trainer.run_benchmark(df_ai)
                 st.session_state['trainer'] = trainer
                 st.session_state['benchmark'] = results
-            st.success("Training beendet.")
+            st.rerun() # Grüne Meldung entfernen durch Rerun
         
         # 1. Feature Importance
         if 'benchmark' in st.session_state and 'trainer' in st.session_state:
@@ -144,7 +144,7 @@ else:
             feature_map_de = {
                 'hour': 'Uhrzeit', 'weekday': 'Wochentag', 'month': 'Monat', 'is_weekend': 'Wochenende',
                 'holiday_de_bw': 'Feiertag (DE)', 'holiday_fr_zone_b': 'Schulferien (FR)', 'holiday_ch_bs': 'Feiertag (CH)',
-                'temp': 'Temperatur', 'rain': 'Niederschlag', 'HCI_Urban': 'HCI Index',
+                'temp': 'Temperatur', 'rain': 'Niederschlag', 'HCI_Urban': 'HCI',
                 'wait_time_lag_1': 'Latenz (10min)', 'wait_time_lag_6': 'Trend (1h)', 'ride_id': 'Attraktionstyp'
             }
 
@@ -173,30 +173,31 @@ else:
                     ax_imp2.set_xlabel("Relative Wichtigkeit", color='white')
                     ax_imp2.set_ylabel("", color='white')
                     st.pyplot(fig_imp2)
+
+            st.divider()
+            
+            # 2. Correlation & Distribution
+            col_corr, col_dist = st.columns(2)
+            with col_corr:
+                st.markdown("**Übergreifende Korrelationsmatrix (Alle Modelle)**")
+                num_cols = ['wait_time', 'temp', 'rain', 'HCI_Urban', 'hour']
+                corr = df_ai[num_cols].rename(columns={'wait_time': 'Wartezeit', 'temp': 'Temp', 'rain': 'Regen', 'HCI_Urban': 'HCI', 'hour': 'Std'}).corr()
+                fig_corr, ax_corr = plt.subplots(figsize=(5, 4))
+                fig_corr.patch.set_facecolor('#0E1117')
+                sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax_corr, cbar=False)
+                st.pyplot(fig_corr)
+
+            with col_dist:
+                st.markdown("**Verteilung der Zielvariable (Wartezeit)**")
+                fig_dist, ax_dist = plt.subplots(figsize=(5, 4))
+                fig_dist.patch.set_facecolor('#0E1117')
+                sns.histplot(df_ai['wait_time'], bins=30, kde=True, color="#4c72b0", ax=ax_dist)
+                ax_dist.set_xlabel("Minuten", color='white')
+                ax_dist.set_ylabel("Anzahl", color='white')
+                st.pyplot(fig_dist)
+
         else:
-            st.info("Modelle müssen trainiert werden.")
-
-        st.divider()
-        
-        # 2. Correlation & Distribution
-        col_corr, col_dist = st.columns(2)
-        with col_corr:
-            st.markdown("**Korrelationsmatrix**")
-            num_cols = ['wait_time', 'temp', 'rain', 'HCI_Urban', 'hour']
-            corr = df_ai[num_cols].rename(columns={'wait_time': 'Wartezeit', 'temp': 'Temp', 'rain': 'Regen', 'hour': 'Std'}).corr()
-            fig_corr, ax_corr = plt.subplots(figsize=(5, 4))
-            fig_corr.patch.set_facecolor('#0E1117')
-            sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax_corr, cbar=False)
-            st.pyplot(fig_corr)
-
-        with col_dist:
-            st.markdown("**Verteilung (Empirie)**")
-            fig_dist, ax_dist = plt.subplots(figsize=(5, 4))
-            fig_dist.patch.set_facecolor('#0E1117')
-            sns.histplot(df_ai['wait_time'], bins=30, kde=True, color="#4c72b0", ax=ax_dist)
-            ax_dist.set_xlabel("Minuten", color='white')
-            ax_dist.set_ylabel("Anzahl", color='white')
-            st.pyplot(fig_dist)
+            st.info("Die Modelle müssen erst trainiert werden. Bitte nutzen Sie dazu den Button 'Modelle trainieren' in der linken Seitenleiste.")
 
     # TAB 3: PROGNOSE
     with tab3:
