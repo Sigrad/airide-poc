@@ -160,79 +160,42 @@ else:
             st.warning("Bitte Modelle in Tab 2 initialisieren.")
         else:
             subtab_sim, subtab_live = st.tabs(["Szenario-Simulation", "Echtzeit-Validierung"])
-            
             with subtab_sim:
                 with st.container(border=True):
                     c_w, c_t = st.columns(2)
                     with c_w:
-                        st.markdown("**Wetterparameter**")
-                        s_temp = st.slider("Temperatur (°C)", -5, 40, 25)
-                        s_rain = st.slider("Regen (mm)", 0.0, 20.0, 0.0)
-                        s_cloud = st.slider("Bewölkung (%)", 0, 100, 20)
-                        sim_hci = (4 * max(0, 10-abs(s_temp-25)*0.5)) + (2 * (100-s_cloud)/10) + (3 * max(0, 10-s_rain*2)) + 10
+                        st.markdown("**Wetterparameter**"); s_temp = st.slider("Temperatur (°C)", -5, 40, 25); s_rain = st.slider("Regen (mm)", 0.0, 20.0, 0.0); s_cloud = st.slider("Bewölkung (%)", 0, 100, 20); sim_hci = (4 * max(0, 10-abs(s_temp-25)*0.5)) + (2 * (100-s_cloud)/10) + (3 * max(0, 10-s_rain*2)) + 10
                     with c_t:
-                        st.markdown("**Zeitparameter**")
-                        s_hour = st.slider("Stunde", 9, 20, 14)
-                        days_opt = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
-                        s_day_name = st.selectbox("Wochentag", options=days_opt, index=5)
-                        s_weekday = days_opt.index(s_day_name)
-                        months_opt = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
-                        s_month_name = st.selectbox("Monat", options=months_opt, index=6)
-                        s_month = months_opt.index(s_month_name) + 1
-                        cc1, cc2, cc3 = st.columns(3)
-                        s_hol_de = cc1.checkbox("Feiertag DE")
-                        s_hol_fr = cc2.checkbox("Ferien FR")
-                        s_hol_ch = cc3.checkbox("Feiertag CH")
-                
+                        st.markdown("**Zeitparameter**"); s_hour = st.slider("Stunde", 9, 20, 14); days_opt = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]; s_day_name = st.selectbox("Wochentag", options=days_opt, index=5); s_weekday = days_opt.index(s_day_name); months_opt = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]; s_month_name = st.selectbox("Monat", options=months_opt, index=6); s_month = months_opt.index(s_month_name) + 1; cc1, cc2, cc3 = st.columns(3); s_hol_de = cc1.checkbox("Feiertag DE"); s_hol_fr = cc2.checkbox("Ferien FR"); s_hol_ch = cc3.checkbox("Feiertag CH")
                 if st.button("Simulation starten", type="primary", use_container_width=True):
-                    rides = df_ai['ride_name'].unique()
-                    rows = []
+                    rides = df_ai['ride_name'].unique(); rows = []
                     for r in rides:
                         try:
-                            rid_meta = df_ai[df_ai['ride_name']==r].iloc[0]
-                            inp = pd.DataFrame([{
-                                'hour': s_hour, 'weekday': s_weekday, 'month': s_month, 
-                                'is_weekend': 1 if s_weekday>=5 else 0, 'holiday_de_bw': int(s_hol_de), 
-                                'holiday_fr_zone_b': int(s_hol_fr), 'holiday_ch_bs': int(s_hol_ch), 
-                                'temp': s_temp, 'rain': s_rain, 'HCI_Urban': sim_hci, 
-                                'wait_time_lag_1': rid_meta['wait_time_lag_1'], 
-                                'wait_time_lag_6': rid_meta['wait_time_lag_6'], 
-                                'ride_id': rid_meta['ride_id']
-                            }])
-                            preds = st.session_state['trainer'].predict_ensemble(inp)
-                            row = {'Attraktion': r}
-                            row.update(preds)
-                            rows.append(row)
+                            rid_meta = df_ai[df_ai['ride_name']==r].iloc[0]; inp = pd.DataFrame([{'hour': s_hour, 'weekday': s_weekday, 'month': s_month, 'is_weekend': 1 if s_weekday>=5 else 0, 'holiday_de_bw': int(s_hol_de), 'holiday_fr_zone_b': int(s_hol_fr), 'holiday_ch_bs': int(s_hol_ch), 'temp': s_temp, 'rain': s_rain, 'HCI_Urban': sim_hci, 'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'], 'ride_id': rid_meta['ride_id']}]); preds = st.session_state['trainer'].predict_ensemble(inp); row = {'Attraktion': r}; row.update(preds); rows.append(row)
                         except: continue
-                    
                     if rows:
-                        res_df = pd.DataFrame(rows).set_index('Attraktion')
-                        res_df['Durchschnitt'] = res_df.mean(axis=1)
-                        st.subheader("Vergleichende Simulationsergebnisse")
-                        col_plot, col_info = st.columns([2, 1])
+                        res_df = pd.DataFrame(rows).set_index('Attraktion'); res_df['Durchschnitt'] = res_df.mean(axis=1); res_df['Varianz'] = res_df[['Random Forest', 'Gradient Boosting', 'LSTM']].std(axis=1)
+                        st.subheader("Vergleichende Simulationsergebnisse"); col_plot, col_info = st.columns([2, 1])
                         with col_plot:
-                            st.markdown("**Prognose-Übersicht (Top 10)**")
-                            melted = res_df.reset_index().melt(id_vars='Attraktion', var_name='Modell', value_name='Minuten')
-                            melted = melted[~melted['Modell'].isin(['Durchschnitt', 'Varianz'])]
-                            top_rides = res_df.sort_values('Durchschnitt', ascending=False).head(10).index.tolist()
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            fig.patch.set_facecolor('#0E1117')
-                            sns.barplot(data=melted[melted['Attraktion'].isin(top_rides)], x='Minuten', y='Attraktion', hue='Modell', palette="viridis", ax=ax)
-                            st.pyplot(fig)
+                            st.markdown("**Prognose-Übersicht (Top 10)**"); melted = res_df.reset_index().melt(id_vars='Attraktion', var_name='Modell', value_name='Minuten'); melted = melted[~melted['Modell'].isin(['Durchschnitt', 'Varianz'])]; top_rides = res_df.sort_values('Durchschnitt', ascending=False).head(10).index.tolist(); fig, ax = plt.subplots(figsize=(10, 6)); fig.patch.set_facecolor('#0E1117'); sns.barplot(data=melted[melted['Attraktion'].isin(top_rides)], x='Minuten', y='Attraktion', hue='Modell', palette="viridis", ax=ax); st.pyplot(fig)
                         with col_info:
-                            st.markdown("**Modell-Vergleich**")
-                            st.dataframe(res_df[['Random Forest', 'Gradient Boosting', 'LSTM']].sample(min(5, len(res_df))), use_container_width=True)
-
+                            st.markdown("**Modell-Diskordanz**"); st.dataframe(res_df[['Varianz']].sort_values('Varianz', ascending=False).head(5), use_container_width=True); st.markdown("**Stichproben-Vergleich**"); st.dataframe(res_df.sample(min(8, len(res_df)))[['Random Forest', 'Gradient Boosting', 'LSTM']], use_container_width=True)
             with subtab_live:
-                latest_dt = df_raw['datetime'].max()
-                df_today = df_raw[df_raw['datetime'].dt.date == latest_dt.date()].copy()
-                if df_today.empty: 
-                    st.error("Keine Daten verfügbar.")
+                latest_date = df_raw['datetime'].max().date(); df_today = df_raw[df_raw['datetime'].dt.date == latest_date].copy()
+                if df_today.empty: st.error("Keine Daten verfügbar.")
                 else:
-                    snapshot_now = df_today[df_today['datetime'] == latest_dt]
-                    current_weather = snapshot_now.iloc[0]
-                    rows_live = []
-                    
+                    snapshot_now = df_today[df_today['datetime'] == df_today['datetime'].max()]; current_weather = snapshot_now.iloc[0]; rows_live = []; valid_rides = snapshot_now[snapshot_now['is_open']==True]['ride_name'].unique()
+                    for r in valid_rides:
+                        try:
+                            real_val = snapshot_now[snapshot_now['ride_name']==r]['wait_time'].values[0]; rid_meta = df_ai[df_ai['ride_name']==r].iloc[-1]; inp_now = pd.DataFrame([{'hour': pd.to_datetime(current_weather['datetime']).hour, 'weekday': pd.to_datetime(current_weather['datetime']).weekday(), 'month': pd.to_datetime(current_weather['datetime']).month, 'is_weekend': 1 if pd.to_datetime(current_weather['datetime']).weekday() >= 5 else 0, 'holiday_de_bw': rid_meta['holiday_de_bw'], 'holiday_fr_zone_b': rid_meta['holiday_fr_zone_b'], 'holiday_ch_bs': rid_meta['holiday_ch_bs'], 'temp': current_weather['temp'], 'rain': current_weather['rain'], 'HCI_Urban': hci_score, 'wait_time_lag_1': rid_meta['wait_time_lag_1'], 'wait_time_lag_6': rid_meta['wait_time_lag_6'], 'ride_id': rid_meta['ride_id']}]); preds = st.session_state['trainer'].predict_ensemble(inp_now); row = {'Attraktion': r, 'Ist': real_val}; row.update(preds); rows_live.append(row)
+                        except: continue
+                    if rows_live:
+                        live_df = pd.DataFrame(rows_live).set_index('Attraktion'); st.subheader(f"Abgleich mit Echtzeitdaten ({latest_date})"); col_scatter, col_metrics = st.columns([2, 1])
+                        with col_scatter:
+                            st.markdown("**Kalibrierungs-Analyse (alle Modelle)**"); live_df['Prognose_Schnitt'] = live_df[['Random Forest', 'Gradient Boosting', 'LSTM']].mean(axis=1); fig, ax = plt.subplots(figsize=(8, 5)); fig.patch.set_facecolor('#0E1117'); sns.scatterplot(data=live_df, x='Ist', y='Prognose_Schnitt', color="#4c72b0", ax=ax, s=100); ax.plot([0, 120], [0, 120], color='white', linestyle='--', alpha=0.5); ax.set_xlabel("Ist-Messwert"); ax.set_ylabel("Modell-Prognose"); st.pyplot(fig)
+                        with col_metrics:
+                            st.markdown("**Metriken**"); mae = abs(live_df['Ist'] - live_df['Prognose_Schnitt']).mean(); st.metric("MAE", f"{mae:.2f} min"); st.markdown("**Modell-Abweichungen**"); live_df['Abs_Fehler'] = abs(live_df['Ist'] - live_df['Random Forest']); st.dataframe(live_df[['Ist', 'Random Forest', 'Abs. Fehler']].sort_values('Abs_Fehler', ascending=False).head(5), use_container_width=True)
+
     # TAB 4: Validation
     with tab4:
         if 'benchmark' in st.session_state:
