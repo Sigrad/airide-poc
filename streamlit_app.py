@@ -45,14 +45,22 @@ st.sidebar.info(f"Datenquelle: {status_text}")
 def load_data_pipeline():
     collector = DataCollector()
     df_raw = collector.fetch_historical_data()
+    
     if df_raw.empty: 
         return pd.DataFrame(), pd.DataFrame()
     
-    # Standardize column name for UI consistency
-    if 'timestamp' in df_raw.columns and 'datetime' not in df_raw.columns:
-        df_raw['datetime'] = pd.to_datetime(df_raw['timestamp'])
+    # Standardize time column to 'datetime' for UI and Engineering
+    time_col = None
+    if 'timestamp' in df_raw.columns:
+        time_col = 'timestamp'
     elif 'datetime' in df_raw.columns:
-        df_raw['datetime'] = pd.to_datetime(df_raw['datetime'])
+        time_col = 'datetime'
+        
+    if time_col:
+        df_raw['datetime'] = pd.to_datetime(df_raw[time_col])
+    else:
+        # Fallback if no time column is found
+        return pd.DataFrame(), pd.DataFrame()
 
     engine = FeatureEngineering()
     df_processed = engine.process_data(df_raw)
@@ -62,15 +70,14 @@ def load_data_pipeline():
 df_raw, df_ai = load_data_pipeline()
 
 if df_raw.empty:
-    st.error("Fehler: Keine Daten geladen. Bitte prüfen Sie die Verbindung zur API oder die CSV-Datei.")
+    st.error("Keine Daten geladen. Bitte 'real_waiting_times.csv' prüfen oder Initial-Kollektion starten.")
 else:
     # --- KPI CALCULATIONS ---
-    # Determine the latest record safely
-    time_col = 'datetime' if 'datetime' in df_raw.columns else 'timestamp'
-    latest_ts = df_raw[time_col].max()
-    snapshot = df_raw[df_raw[time_col] == latest_ts]
+    # Use standardized column
+    latest_ts = df_raw['datetime'].max()
+    snapshot = df_raw[df_raw['datetime'] == latest_ts]
     
-    # Average calculation excluding closed rides
+    # Accurate filtering for average
     if 'is_open' in snapshot.columns:
         open_rides = snapshot[snapshot['is_open'] == True]
     else:
@@ -80,15 +87,15 @@ else:
     temp_now = snapshot['temp'].mean() if 'temp' in snapshot.columns else 20
     hci_score = (4 * max(0, 10-abs(temp_now-25)*0.5)) + 20 
     
-    # UI Metrics
+    # KPI UI
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Letzte Aktualisierung", pd.to_datetime(latest_ts).strftime('%H:%M'))
+    c1.metric("Letzte Aktualisierung", latest_ts.strftime('%H:%M'))
     c2.metric("Aktive Attraktionen", len(open_rides))
-    c3.metric("Durchschn. Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
+    c3.metric("Ø Wartezeit", f"{avg_wait:.1f} min", delta_color="inverse")
     c4.metric(
         "HCI", 
         f"{hci_score:.0f}/100", 
-        help="Der Holiday Climate Index (HCI) bewertet die klimatische Eignung für Freizeitaktivitäten unter Einbezug meteorologischer Faktoren."
+        help="Holiday Climate Index: Bewertet die klimatische und saisonale Eignung."
     )
 
     st.markdown("---")
@@ -107,7 +114,7 @@ else:
                             x='wait_time', y='ride_name', palette="viridis", ax=ax)
                 ax.set_ylabel(""); ax.set_xlabel("Minuten"); st.pyplot(fig)
             else:
-                st.info("Momentan keine Daten für offene Attraktionen verfügbar.")
+                st.info("Park geschlossen oder keine Daten verfügbar.")
 
         with c_table:
             st.subheader("Attraktionen")
@@ -138,7 +145,6 @@ else:
         if 'benchmark' in st.session_state and 'trainer' in st.session_state:
             st.subheader("Signifikanz der Einflussfaktoren")
             fi_col1, fi_col2 = st.columns(2)
-            # Feature mapping based on standard columns defined in PredictionModel
             features = st.session_state['trainer'].feature_columns
             feature_map_de = {
                 'hour': 'Uhrzeit', 'weekday': 'Wochentag', 'month': 'Monat', 'is_weekend': 'Wochenende',
@@ -163,7 +169,7 @@ else:
                     fig, ax = plt.subplots(figsize=(5, 3)); fig.patch.set_facecolor('#0E1117')
                     sns.barplot(data=imp_df_gb, x='Wert', y='Merkmal', palette="viridis", ax=ax); st.pyplot(fig)
         else:
-            st.info("Bitte nutzen Sie den Button in der linken Seitenleiste, um die Modell-Analyse zu starten.")
+            st.info("Bitte nutzen Sie den Button in der linken Seitenleiste, um das Modelltraining zu starten.")
 
-    # TAB 3 & 4 (Simulation & Validation logic follows...)
-    # (Reduced for brevity, make sure to use st.session_state['trainer'].predict_ensemble for inference)
+    # TAB 3 & 4 (Simulation & Validierung) folgen hier...
+    # (Struktur analog zum vorherigen funktionierenden Stand)
