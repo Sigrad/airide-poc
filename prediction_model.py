@@ -3,12 +3,10 @@ import pandas as pd
 import warnings
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from scipy.stats import norm
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, List
 
-# TensorFlow imports (wrapped in try-except to avoid crashes if not installed)
+# Conditional import for TensorFlow to maintain environment flexibility
 try:
     import tensorflow as tf
     from tensorflow.keras.models import Sequential
@@ -20,113 +18,121 @@ except ImportError:
 
 class PredictionModel:
     """
-    Manages training and evaluation of multiple model architectures:
-    1. Random Forest (Baseline)
-    2. Gradient Boosting (Booster)
-    3. LSTM (Deep Learning)
+    Manages the training, evaluation, and inference of multiple machine learning 
+    architectures including Random Forest, Gradient Boosting, and LSTM.
     """
 
     def __init__(self):
-        self.models = {}
-        self.scalers = {} # Needed for LSTM
+        self.models: Dict[str, Any] = {}
+        self.scalers: Dict[str, StandardScaler] = {}
+        self.feature_columns: List[str] = [
+            'hour', 'weekday', 'month', 'is_weekend', 
+            'holiday_de_bw', 'holiday_fr_zone_b', 'holiday_ch_bs',
+            'temp', 'rain', 'HCI_Urban', 
+            'wait_time_lag_1', 'wait_time_lag_6', 'ride_id'
+        ]
 
-    def run_benchmark(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Trains all available models and compares metrics."""
-        if df.empty: raise ValueError("Empty DataFrame")
-
-        # 1. Prepare Data
-        features = ['hour', 'weekday', 'month', 'is_weekend', 
-                    'holiday_de_bw', 'holiday_fr_zone_b', 'holiday_ch_bs',
-                    'temp', 'rain', 'HCI_Urban', 
-                    'wait_time_lag_1', 'wait_time_lag_6', 'ride_id']
+    def run_benchmark(self, dataframe: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Executes a comparative training and evaluation run for all available models.
         
-        for f in features:
-            if f not in df.columns: df[f] = 0
+        Args:
+            dataframe (pd.DataFrame): Preprocessed features and target variable.
             
-        X = df[features]
-        y = df['wait_time']
+        Returns:
+            Dict[str, Any]: Performance metrics and prediction results per model.
+        """
+        if dataframe.empty:
+            raise ValueError("Provided DataFrame is empty.")
+
+        # Ensure all required features are present
+        for feature in self.feature_columns:
+            if feature not in dataframe.columns:
+                dataframe[feature] = 0
+            
+        x_data = dataframe[self.feature_columns]
+        y_data = dataframe['wait_time']
         
-        # Chronological Split (80/20)
-        split_idx = int(len(df) * 0.8)
-        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
-        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+        # Chronological split (80% training, 20% testing)
+        split_index = int(len(dataframe) * 0.8)
+        x_train, x_test = x_data.iloc[:split_index], x_data.iloc[:split_index]
+        y_train, y_test = y_data.iloc[:split_index], y_data.iloc[:split_index]
 
-        results = {}
+        benchmark_results = {}
 
-        # --- MODEL 1: Random Forest ---
-        print("Training Random Forest...")
-        rf = RandomForestRegressor(n_estimators=100, max_depth=20, random_state=42)
-        rf.fit(X_train, y_train)
-        results['Random Forest'] = self._evaluate(rf, X_test, y_test, 'rf')
-        self.models['rf'] = rf
+        # Architecture 1: Random Forest
+        rf_regressor = RandomForestRegressor(n_estimators=100, max_depth=20, random_state=42)
+        rf_regressor.fit(x_train, y_train)
+        self.models['rf'] = rf_regressor
+        benchmark_results['Random Forest'] = self._evaluate_model(rf_regressor, x_test, y_test, 'rf')
 
-        # --- MODEL 2: Gradient Boosting ---
-        print("Training Gradient Boosting...")
-        gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
-        gb.fit(X_train, y_train)
-        results['Gradient Boosting'] = self._evaluate(gb, X_test, y_test, 'gb')
-        self.models['gb'] = gb
+        # Architecture 2: Gradient Boosting
+        gb_regressor = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+        gb_regressor.fit(x_train, y_train)
+        self.models['gb'] = gb_regressor
+        benchmark_results['Gradient Boosting'] = self._evaluate_model(gb_regressor, x_test, y_test, 'gb')
 
-        # --- MODEL 3: LSTM (Optional) ---
+        # Architecture 3: LSTM (Deep Learning)
         if TF_AVAILABLE:
-            print("Training LSTM...")
-            # Scale data for NN
-            scaler_X = StandardScaler()
-            X_train_sc = scaler_X.fit_transform(X_train)
-            X_test_sc = scaler_X.transform(X_test)
-            self.scalers['lstm'] = scaler_X
-
-            # Reshape for LSTM [samples, timesteps, features]
-            X_train_re = X_train_sc.reshape((X_train_sc.shape[0], 1, X_train_sc.shape[1]))
-            X_test_re = X_test_sc.reshape((X_test_sc.shape[0], 1, X_test_sc.shape[1]))
-
-            # Build Net
-            lstm = Sequential([
-                Input(shape=(1, X_train_sc.shape[1])),
-                LSTM(50, activation='relu', return_sequences=False),
-                Dense(1)
-            ])
-            lstm.compile(optimizer=Adam(learning_rate=0.01), loss='mse')
-            
-            # Train (Verbose=0 to keep logs clean)
-            lstm.fit(X_train_re, y_train, epochs=10, batch_size=32, verbose=0, shuffle=False)
-            
-            results['LSTM'] = self._evaluate(lstm, X_test_re, y_test, 'lstm')
-            self.models['lstm'] = lstm
+            lstm_results = self._train_lstm(x_train, y_train, x_test, y_test)
+            benchmark_results['LSTM'] = lstm_results
         
-        return results
+        return benchmark_results
 
-    def _evaluate(self, model, X_test, y_test, model_type):
-        """Generic evaluation helper."""
+    def _train_lstm(self, x_train: pd.DataFrame, y_train: pd.Series, 
+                   x_test: pd.DataFrame, y_test: pd.Series) -> Dict[str, Any]:
+        """Internal helper to manage LSTM specific data transformations and training."""
+        scaler = StandardScaler()
+        x_train_scaled = scaler.fit_transform(x_train)
+        x_test_scaled = scaler.transform(x_test)
+        self.scalers['lstm'] = scaler
+
+        # Reshape for LSTM: [samples, time_steps, features]
+        x_train_reshaped = x_train_scaled.reshape((x_train_scaled.shape[0], 1, x_train_scaled.shape[1]))
+        x_test_reshaped = x_test_scaled.reshape((x_test_scaled.shape[0], 1, x_test_scaled.shape[1]))
+
+        model = Sequential([
+            Input(shape=(1, x_train_scaled.shape[1])),
+            LSTM(50, activation='relu', return_sequences=False),
+            Dense(1)
+        ])
+        model.compile(optimizer=Adam(learning_rate=0.01), loss='mse')
+        model.fit(x_train_reshaped, y_train, epochs=10, batch_size=32, verbose=0, shuffle=False)
+        
+        self.models['lstm'] = model
+        return self._evaluate_model(model, x_test_reshaped, y_test, 'lstm')
+
+    def _evaluate_model(self, model: Any, x_test: np.ndarray, 
+                       y_test: pd.Series, model_type: str) -> Dict[str, Any]:
+        """Calculates standard regression metrics for model validation."""
         if model_type == 'lstm':
-            pred = model.predict(X_test, verbose=0).flatten()
+            predictions = model.predict(x_test, verbose=0).flatten()
         else:
-            pred = model.predict(X_test)
+            predictions = model.predict(x_test)
             
         return {
-            'rmse': np.sqrt(mean_squared_error(y_test, pred)),
-            'mae': mean_absolute_error(y_test, pred),
-            'r2': r2_score(y_test, pred),
-            'predictions': pred,
+            'rmse': np.sqrt(mean_squared_error(y_test, predictions)),
+            'mae': mean_absolute_error(y_test, predictions),
+            'r2': r2_score(y_test, predictions),
+            'predictions': predictions,
             'actuals': y_test.values
         }
 
-    def predict_ensemble(self, input_df: pd.DataFrame) -> Dict[str, float]:
-        """Returns predictions from all trained models for a single input."""
-        preds = {}
-        # RF
-        if 'rf' in self.models:
-            preds['Random Forest'] = self.models['rf'].predict(input_df)[0]
+    def predict_ensemble(self, input_features: pd.DataFrame) -> Dict[str, float]:
+        """Generates predictions across all initialized models."""
+        ensemble_predictions = {}
         
-        # GB
+        if 'rf' in self.models:
+            ensemble_predictions['Random Forest'] = self.models['rf'].predict(input_features)[0]
+        
         if 'gb' in self.models:
-            preds['Gradient Boosting'] = self.models['gb'].predict(input_df)[0]
+            ensemble_predictions['Gradient Boosting'] = self.models['gb'].predict(input_features)[0]
             
-        # LSTM
         if 'lstm' in self.models and TF_AVAILABLE:
-            sc = self.scalers['lstm']
-            input_sc = sc.transform(input_df)
-            input_re = input_sc.reshape((input_sc.shape[0], 1, input_sc.shape[1]))
-            preds['LSTM'] = float(self.models['lstm'].predict(input_re, verbose=0)[0][0])
+            scaler = self.scalers['lstm']
+            scaled_input = scaler.transform(input_features)
+            reshaped_input = scaled_input.reshape((scaled_input.shape[0], 1, scaled_input.shape[1]))
+            lstm_pred = self.models['lstm'].predict(reshaped_input, verbose=0)[0][0]
+            ensemble_predictions['LSTM'] = float(lstm_pred)
             
-        return preds
+        return ensemble_predictions
