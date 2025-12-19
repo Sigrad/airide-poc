@@ -10,12 +10,13 @@ from prediction_model import PredictionModel
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="AIRide Analyse", layout="wide")
-sns.set_theme(style="whitegrid") 
+# Set Seaborn to a dark grid to match the requested dark aesthetic for charts
+sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#1e1e1e", "grid.color": "#444444", "text.color": "white", "xtick.color": "white", "ytick.color": "white", "axes.labelcolor": "white"})
 
 # --- HEADER SECTION ---
 st.title("AIRide: Analyse von Besucherströmen & Wartezeiten")
 st.markdown("""
-Dashboard zur Überwachung und Prognose von Besucherströmen von Europa Park.
+Dashboard zur Überwachung und Prognose von Besucherströmen.
 Dieses Tool nutzt **Random Forest Regression** und den **Holiday Climate Index (HCI)**.
 """)
 
@@ -90,61 +91,62 @@ else:
 
     # TAB 1: LIVE STATUS
     with tab1:
-        if count_open > 0:
-            c_chart, c_table = st.columns([2, 1])
-            
-            with c_chart:
-                st.subheader("Aktuelle Wartezeiten")
-                fig, ax = plt.subplots(figsize=(8, 5))
-                sns.barplot(data=open_rides.sort_values('wait_time', ascending=False), 
+        c_chart, c_table = st.columns([1.5, 1])
+        
+        with c_chart:
+            st.subheader("Aktuelle Wartezeiten (Top 15)")
+            if count_open > 0:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                # Set background for plot to match dark theme
+                fig.patch.set_facecolor('#0E1117') 
+                
+                sns.barplot(data=open_rides.sort_values('wait_time', ascending=False).head(15), 
                             x='wait_time', y='ride_name', palette="viridis", ax=ax)
-                ax.set_xlabel("Minuten")
-                ax.set_ylabel("")
+                ax.set_xlabel("Minuten", color='white')
+                ax.set_ylabel("", color='white')
                 st.pyplot(fig)
                 st.caption("Echtzeit-Auslastung der offenen Attraktionen.")
-                
-            with c_table:
-                st.subheader("Rohdaten Log")
-                
-                # Prepare Table Data
-                log_df = df_raw.tail(15)[['datetime', 'ride_name', 'wait_time', 'is_open']].copy()
-                
-                # Format Timestamp (remove milliseconds)
-                log_df['datetime'] = log_df['datetime'].dt.strftime('%H:%M:%S')
-                
-                # Display with nice formatting
-                st.dataframe(
-                    log_df,
-                    column_config={
-                        "datetime": "Zeitpunkt",
-                        "ride_name": "Attraktion",
-                        "wait_time": st.column_config.NumberColumn(
-                            "Wartezeit", format="%d min"
-                        ),
-                        "is_open": st.column_config.CheckboxColumn(
-                            "Status",
-                        )
-                    },
-                    hide_index=True,
-                    use_container_width=True
-                )
-        else:
-            st.info("Park ist derzeit geschlossen. Historisches Log wird unten angezeigt.")
+            else:
+                st.info("Keine offenen Attraktionen für das Diagramm verfügbar.")
+
+        with c_table:
+            st.subheader("Park Übersicht & Status")
             
-            # Same formatting for closed state log
-            log_df = df_raw.tail(20)[['datetime', 'ride_name', 'wait_time', 'is_open']].copy()
-            log_df['datetime'] = log_df['datetime'].dt.strftime('%d.%m. %H:%M')
+            # 1. Prepare Data: Get all rides from the snapshot (not just open ones)
+            # We sort by: Open Status (True first), then Wait Time (Desc), then Name
+            overview_df = snapshot[['ride_name', 'is_open', 'wait_time']].copy()
+            overview_df = overview_df.sort_values(by=['is_open', 'wait_time', 'ride_name'], ascending=[False, False, True])
             
+            # 2. Apply Dark Design using Pandas Styler
+            # This forces the table to have a dark background regardless of Streamlit theme
+            def style_dark(styler):
+                styler.set_properties(**{
+                    'background-color': '#1e1e1e',
+                    'color': '#ffffff',
+                    'border-color': '#444444'
+                })
+                return styler
+
+            # 3. Configure Columns for Streamlit
             st.dataframe(
-                log_df,
+                overview_df.style.pipe(style_dark), # Apply dark style
                 column_config={
-                    "datetime": "Zeitstempel",
-                    "ride_name": "Attraktion",
-                    "wait_time": st.column_config.NumberColumn("Wartezeit", format="%d min"),
-                    "is_open": st.column_config.CheckboxColumn("Geöffnet?")
+                    "ride_name": st.column_config.TextColumn("Attraktion"),
+                    "is_open": st.column_config.CheckboxColumn(
+                        "Geöffnet",
+                        help="Ist die Attraktion aktuell in Betrieb?"
+                    ),
+                    "wait_time": st.column_config.ProgressColumn(
+                        "Wartezeit",
+                        format="%d min",
+                        min_value=0,
+                        max_value=120,
+                        help="Aktuelle Wartezeit in Minuten"
+                    )
                 },
                 hide_index=True,
-                use_container_width=True
+                use_container_width=True,
+                height=600 # Fixed height to make it scrollable like a real list
             )
 
     # TAB 2: AI INSIGHTS
@@ -170,8 +172,8 @@ else:
             st.markdown("Welche Faktoren beeinflussen die Wartezeit am stärksten?")
             
             fig_imp, ax_imp = plt.subplots(figsize=(8, 4))
+            fig_imp.patch.set_facecolor('#0E1117') # Dark Background for plot
             
-            # Mapping feature names to German
             imp_df = m['feature_importance'].head(10).copy()
             feature_map = {
                 'hour': 'Tageszeit (Stunde)', 
@@ -188,6 +190,8 @@ else:
             imp_df['Feature'] = imp_df['Feature'].map(feature_map).fillna(imp_df['Feature'])
             
             sns.barplot(data=imp_df, x='Importance', y='Feature', hue='Feature', palette="magma", ax=ax_imp)
+            ax_imp.set_xlabel("Wichtigkeit", color='white')
+            ax_imp.set_ylabel("", color='white')
             st.pyplot(fig_imp)
             st.caption("Visualisierung der Random Forest Entscheidungsbaum-Gewichtung.")
         else:
@@ -267,8 +271,11 @@ else:
                     melted = top_comp.melt(id_vars='Attraktion', value_vars=[ref_label_short, 'Simulation'], var_name='Szenario', value_name='Minuten')
                     
                     fig_comp, ax_comp = plt.subplots(figsize=(10, 5))
+                    fig_comp.patch.set_facecolor('#0E1117') # Dark Background
+                    
                     sns.barplot(data=melted, x='Minuten', y='Attraktion', hue='Szenario', palette=["#9e9e9e", "#4c72b0"], ax=ax_comp)
-                    ax_comp.set_ylabel("")
+                    ax_comp.set_ylabel("", color='white')
+                    ax_comp.set_xlabel("Minuten", color='white')
                     st.pyplot(fig_comp)
 
             # Detailed Table
