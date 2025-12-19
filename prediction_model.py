@@ -80,7 +80,7 @@ class PredictionModel:
         results['Gradient Boosting'] = self._evaluate(gb, X_test, y_test, 'gb')
         self.models['gb'] = gb
 
-        # --- MODEL 3: LSTM (Optional) ---
+        # --- MODEL 3: LSTM ---
         if TF_AVAILABLE:
             print("Training LSTM...")
             # Scale data for NN

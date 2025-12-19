@@ -22,7 +22,7 @@ from data_collector import DataCollector
 from feature_engineering import FeatureEngineering
 from prediction_model import PredictionModel
 
-# --- KONFIGURATION ---
+# --- CONFIG---
 st.set_page_config(page_title="AIRide Analyse", layout="wide")
 sns.set_theme(style="darkgrid", rc={
     "axes.facecolor": "#1e1e1e", 
@@ -33,14 +33,14 @@ sns.set_theme(style="darkgrid", rc={
     "axes.labelcolor": "white"
 })
 
-# --- KOPFZEILE ---
+# --- HEADER ---
 st.title("AIRide: Analyse und Prognose von Besucherströmen")
 st.markdown("""
 System zur Überwachung und prädiktiven Modellierung von Wartezeiten im Europa-Park.
 Methodik: Ensemble-Learning (Random Forest, Gradient Boosting) und Deep Learning (LSTM) unter Einbezug des Holiday Climate Index (HCI).
 """)
 
-# --- SEITENLEISTE ---
+# --- SIDE BAR ---
 st.sidebar.header("Systemsteuerung")
 if st.sidebar.button("Datenbestand aktualisieren"):
     st.cache_data.clear()
@@ -53,7 +53,7 @@ st.sidebar.markdown("---")
 status_text = "ONLINE (API)" if os.path.exists("real_waiting_times.csv") else "OFFLINE (Synthetisch)"
 st.sidebar.info(f"Datenquelle: {status_text}")
 
-# --- DATENLADEN ---
+# --- LOAD DATA ---
 @st.cache_data(ttl=60)
 def load_data_pipeline(days_back=60):
     collector = DataCollector()
@@ -66,7 +66,7 @@ def load_data_pipeline(days_back=60):
 with st.spinner("Lade Datenpipeline..."):
     df_raw, df_ai = load_data_pipeline()
 
-# --- HAUPTINHALT ---
+# --- MAIN ---
 if df_raw.empty:
     st.error("Keine Daten verfügbar.")
 else:
@@ -95,10 +95,10 @@ else:
 
     st.markdown("---")
 
-    # --- REGISTERKARTEN ---
+    # --- TABS ---
     tab1, tab2, tab3, tab4 = st.tabs(["Echtzeit-Monitor", "Modell-Erkenntnisse", "Prognose & Simulation", "Validierung"])
 
-    # TAB 1: ECHTZEIT-MONITOR (UNVERÄNDERT)
+    # TAB 1: Live
     with tab1:
         c_chart, c_table = st.columns([1.5, 1])
         with c_chart:
@@ -117,7 +117,7 @@ else:
                 return f"color: {'#ff4b4b' if val == 'Geschlossen' else '#09ab3b'}"
             st.dataframe(overview_df[['ride_name', 'Status', 'wait_time']].style.map(style_status, subset=['Status']), column_config={"ride_name": "Attraktion", "Status": "Status", "wait_time": st.column_config.ProgressColumn("Wartezeit", format="%d min", min_value=0, max_value=120)}, use_container_width=True, hide_index=True, height=600)
 
-    # TAB 2: MODELL-ERKENNTNISSE (UNVERÄNDERT)
+    # TAB 2: Features
     with tab2:
         if train_btn:
             trainer = PredictionModel()
@@ -154,7 +154,7 @@ else:
         else:
             st.info("Die Modelle müssen erst trainiert werden. Bitte nutzen Sie dazu den Button in der linken Seitenleiste.")
 
-    # TAB 3: PROGNOSE & SIMULATION (UNVERÄNDERT)
+    # TAB 3: Prognose and Sim
     with tab3:
         if 'trainer' not in st.session_state:
             st.warning("Bitte Modelle in Tab 2 initialisieren.")
@@ -196,12 +196,11 @@ else:
                         with col_metrics:
                             st.markdown("**Metriken**"); mae = abs(live_df['Ist'] - live_df['Prognose_Schnitt']).mean(); st.metric("MAE", f"{mae:.2f} min"); st.markdown("**Modell-Abweichungen**"); live_df['Abs_Fehler'] = abs(live_df['Ist'] - live_df['Random Forest']); st.dataframe(live_df[['Ist', 'Random Forest', 'Abs_Fehler']].sort_values('Abs_Fehler', ascending=False).head(5), use_container_width=True)
 
-    # TAB 4: VALIDIERUNG (GEÄNDERT)
+    # TAB 4: Validation
     with tab4:
         if 'benchmark' in st.session_state:
             res = st.session_state['benchmark']
             
-            # --- 1. PERFORMANCE-METRIKEN ---
             st.subheader("Performance-Metriken")
             best_model_name = min(res, key=lambda k: res[k]['rmse'])
             cols = st.columns(len(res))
@@ -219,7 +218,6 @@ else:
 
             st.divider()
 
-            # --- 2. GRAFIKEN NEBENEINANDER ---
             g_col1, g_col2 = st.columns(2)
             
             first_key = list(res.keys())[0]
