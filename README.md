@@ -17,7 +17,7 @@ Proof of Concept für die prädiktive Analyse von Wartezeiten im Europa-Park Rus
 
 1.  **Repository klonen:**
     ```bash
-    git clone [https://github.com/Sigrad/airide-poc.git](https://github.com/Sigrad/airide-poc.git)
+    git clone [https://github.com/Sigrad/airide-poc.git]
     cd airide-poc
     ```
 
