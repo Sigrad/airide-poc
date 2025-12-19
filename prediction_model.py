@@ -1,171 +1,132 @@
 import numpy as np
 import pandas as pd
 import warnings
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from scipy.stats import norm
 from typing import Dict, Any, Tuple
 
+# TensorFlow imports (wrapped in try-except to avoid crashes if not installed)
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense, Input
+    from tensorflow.keras.optimizers import Adam
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
+
 class PredictionModel:
     """
-    Wrapper class for the Random Forest Regressor tailored for time-series forecasting.
-    Includes automated hyperparameter tuning via RandomizedSearchCV and statistical testing.
+    Manages training and evaluation of multiple model architectures:
+    1. Random Forest (Baseline)
+    2. Gradient Boosting (Booster)
+    3. LSTM (Deep Learning)
     """
 
     def __init__(self):
-        """Initializes the PredictionModel with a placeholder estimator."""
-        self.model = RandomForestRegressor(random_state=42)
-        self.best_params = {}
+        self.models = {}
+        self.scalers = {} # Needed for LSTM
 
-    def train_and_evaluate(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """
-        Trains the Random Forest model using RandomizedSearchCV for hyperparameter optimization
-        and evaluates it on a hold-out test set.
+    def run_benchmark(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Trains all available models and compares metrics."""
+        if df.empty: raise ValueError("Empty DataFrame")
 
-        Args:
-            df (pd.DataFrame): The preprocessed feature matrix containing target 'wait_time'.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the trained model object, performance metrics
-                            (RMSE, MAE, R2), p-value of the DM-test, and feature importances.
-        
-        Raises:
-            ValueError: If the dataframe is empty or lacks required columns.
-        """
-        if df.empty:
-            raise ValueError("Input DataFrame is empty.")
-
-        # --- 1. Sanity Check for Synthetic Data ---
-        # Checks if the dataset relies heavily on heuristics (bootstrap data).
-        if 'is_synthetic' in df.columns:
-            synthetic_ratio = df['is_synthetic'].mean()
-            if synthetic_ratio > 0.5:
-                warnings.warn(
-                    f"WARNING: High reliance on synthetic data ({synthetic_ratio:.1%}). "
-                    "Model validity may be compromised and reflect heuristics rather than reality.",
-                    UserWarning
-                )
-        
-        # --- 2. Feature Selection ---
+        # 1. Prepare Data
         features = ['hour', 'weekday', 'month', 'is_weekend', 
                     'holiday_de_bw', 'holiday_fr_zone_b', 'holiday_ch_bs',
                     'temp', 'rain', 'HCI_Urban', 
-                    'wait_time_lag_1', 'wait_time_lag_6',
-                    'ride_id']
+                    'wait_time_lag_1', 'wait_time_lag_6', 'ride_id']
         
-        # Ensure robustness: Fill missing columns with 0
         for f in features:
-            if f not in df.columns:
-                df[f] = 0
-                
+            if f not in df.columns: df[f] = 0
+            
         X = df[features]
         y = df['wait_time']
         
-        # --- 3. Chronological Train-Test Split ---
-        # We perform a strict chronological split (last 20%) to avoid look-ahead bias.
+        # Chronological Split (80/20)
         split_idx = int(len(df) * 0.8)
-        
-        X_train_full, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
-        y_train_full, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
-        
-        # --- 4. Hyperparameter Tuning (RandomizedSearchCV) ---
-        print(f"Starting Hyperparameter Tuning on {len(X_train_full)} rows...")
-        
-        # Define search space
-        param_dist = {
-            'n_estimators': [50, 100, 200, 300],
-            'max_depth': [10, 20, 30, None],
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4],
-            'bootstrap': [True, False]
-        }
-        
-        # Use TimeSeriesSplit for CV to respect temporal order during tuning
-        tscv = TimeSeriesSplit(n_splits=3)
-        
-        random_search = RandomizedSearchCV(
-            estimator=self.model,
-            param_distributions=param_dist,
-            n_iter=15,  # Control computational cost
-            cv=tscv,
-            scoring='neg_root_mean_squared_error',
-            n_jobs=-1,
-            random_state=42,
-            verbose=0
-        )
-        
-        random_search.fit(X_train_full, y_train_full)
-        
-        # Update model with best estimator
-        self.model = random_search.best_estimator_
-        self.best_params = random_search.best_params_
-        print(f"Best Parameters found: {self.best_params}")
+        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-        # --- 5. Evaluation on Hold-Out Set ---
-        rf_pred = self.model.predict(X_test)
-        
-        # Baseline: Mean prediction (Naive Forecast)
-        baseline_pred = np.full(len(y_test), y_train_full.mean())
-        
-        # Metrics Calculation
-        rmse = np.sqrt(mean_squared_error(y_test, rf_pred))
-        mae = mean_absolute_error(y_test, rf_pred)
-        r2 = r2_score(y_test, rf_pred)
-        
-        # Feature Importance Extraction
-        feature_importance = pd.DataFrame({
-            'Feature': features,
-            'Importance': self.model.feature_importances_
-        }).sort_values('Importance', ascending=False)
-        
-        # Statistical Significance Test
-        dm_stat, p_value = self._diebold_mariano_test(y_test, baseline_pred, rf_pred)
-        
-        return {
-            'model': self.model,
-            'rmse': rmse,
-            'mae': mae,
-            'r2': r2,
-            'p_value': p_value,
-            'feature_importance': feature_importance,
-            'best_params': self.best_params
-        }
+        results = {}
 
-    def _diebold_mariano_test(self, y_true: np.array, y_pred1: np.array, y_pred2: np.array) -> Tuple[float, float]:
-        """
-        Performs the Diebold-Mariano test to compare the predictive accuracy of two models.
-        
-        Args:
-            y_true (np.array): Ground truth values.
-            y_pred1 (np.array): Predictions from model 1 (Reference/Baseline).
-            y_pred2 (np.array): Predictions from model 2 (Candidate).
+        # --- MODEL 1: Random Forest ---
+        print("Training Random Forest...")
+        rf = RandomForestRegressor(n_estimators=100, max_depth=20, random_state=42)
+        rf.fit(X_train, y_train)
+        results['Random Forest'] = self._evaluate(rf, X_test, y_test, 'rf')
+        self.models['rf'] = rf
 
-        Returns:
-            Tuple[float, float]: A tuple containing (DM-statistic, p-value).
-            Returns (0.0, 1.0) if variance is zero (models are identical).
-        """
-        y_true = np.array(y_true)
-        y_pred1 = np.array(y_pred1)
-        y_pred2 = np.array(y_pred2)
-        
-        # Squared error loss
-        e1 = (y_true - y_pred1)**2
-        e2 = (y_true - y_pred2)**2
-        
-        # Loss differential
-        d = e1 - e2
-        
-        d_mean = np.mean(d)
-        gamma0 = np.var(d)
-        
-        # Robustness Check: Avoid Division by Zero
-        if gamma0 < 1e-9: 
-            return 0.0, 1.0 
+        # --- MODEL 2: Gradient Boosting ---
+        print("Training Gradient Boosting...")
+        gb = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=42)
+        gb.fit(X_train, y_train)
+        results['Gradient Boosting'] = self._evaluate(gb, X_test, y_test, 'gb')
+        self.models['gb'] = gb
+
+        # --- MODEL 3: LSTM (Optional) ---
+        if TF_AVAILABLE:
+            print("Training LSTM...")
+            # Scale data for NN
+            scaler_X = StandardScaler()
+            X_train_sc = scaler_X.fit_transform(X_train)
+            X_test_sc = scaler_X.transform(X_test)
+            self.scalers['lstm'] = scaler_X
+
+            # Reshape for LSTM [samples, timesteps, features]
+            X_train_re = X_train_sc.reshape((X_train_sc.shape[0], 1, X_train_sc.shape[1]))
+            X_test_re = X_test_sc.reshape((X_test_sc.shape[0], 1, X_test_sc.shape[1]))
+
+            # Build Net
+            lstm = Sequential([
+                Input(shape=(1, X_train_sc.shape[1])),
+                LSTM(50, activation='relu', return_sequences=False),
+                Dense(1)
+            ])
+            lstm.compile(optimizer=Adam(learning_rate=0.01), loss='mse')
             
-        dm_stat = d_mean / np.sqrt(gamma0 / len(y_true))
+            # Train (Verbose=0 to keep logs clean)
+            lstm.fit(X_train_re, y_train, epochs=10, batch_size=32, verbose=0, shuffle=False)
+            
+            results['LSTM'] = self._evaluate(lstm, X_test_re, y_test, 'lstm')
+            self.models['lstm'] = lstm
         
-        # Two-sided p-value (Normal distribution approximation)
-        p_value = 2 * (1 - norm.cdf(np.abs(dm_stat)))
+        return results
+
+    def _evaluate(self, model, X_test, y_test, model_type):
+        """Generic evaluation helper."""
+        if model_type == 'lstm':
+            pred = model.predict(X_test, verbose=0).flatten()
+        else:
+            pred = model.predict(X_test)
+            
+        return {
+            'rmse': np.sqrt(mean_squared_error(y_test, pred)),
+            'mae': mean_absolute_error(y_test, pred),
+            'r2': r2_score(y_test, pred),
+            'predictions': pred,
+            'actuals': y_test.values
+        }
+
+    def predict_ensemble(self, input_df: pd.DataFrame) -> Dict[str, float]:
+        """Returns predictions from all trained models for a single input."""
+        preds = {}
+        # RF
+        if 'rf' in self.models:
+            preds['Random Forest'] = self.models['rf'].predict(input_df)[0]
         
-        return dm_stat, p_value
+        # GB
+        if 'gb' in self.models:
+            preds['Gradient Boosting'] = self.models['gb'].predict(input_df)[0]
+            
+        # LSTM
+        if 'lstm' in self.models and TF_AVAILABLE:
+            sc = self.scalers['lstm']
+            input_sc = sc.transform(input_df)
+            input_re = input_sc.reshape((input_sc.shape[0], 1, input_sc.shape[1]))
+            preds['LSTM'] = float(self.models['lstm'].predict(input_re, verbose=0)[0][0])
+            
+        return preds
