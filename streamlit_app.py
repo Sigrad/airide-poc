@@ -97,25 +97,18 @@ else:
             # Status Mapping
             overview_df['Status'] = overview_df['is_open'].map({True: 'Offen', False: 'Geschlossen'})
             
-            # Styling Funktion für Status-Farben
             def style_status(val):
                 color = '#ff4b4b' if val == 'Geschlossen' else '#09ab3b'
                 return f'color: {color}'
 
             styled_df = overview_df[['ride_name', 'Status', 'wait_time']].style.map(style_status, subset=['Status'])
             
-            # Streamlit Config
             st.dataframe(
                 styled_df,
                 column_config={
                     "ride_name": "Attraktion",
                     "Status": "Status",
-                    "wait_time": st.column_config.ProgressColumn(
-                        "Wartezeit",
-                        format="%d min",
-                        min_value=0,
-                        max_value=120
-                    )
+                    "wait_time": st.column_config.ProgressColumn("Wartezeit", format="%d min", min_value=0, max_value=120)
                 },
                 use_container_width=True,
                 hide_index=True,
@@ -132,7 +125,7 @@ else:
                 st.session_state['benchmark'] = results
             st.success("Training beendet.")
         
-        # Feature Importance Section First
+        # 1. Feature Importance
         if 'benchmark' in st.session_state and 'trainer' in st.session_state:
             st.subheader("Signifikanz der Einflussfaktoren")
             
@@ -150,7 +143,6 @@ else:
                 'wait_time_lag_1': 'Latenz (10min)', 'wait_time_lag_6': 'Trend (1h)', 'ride_id': 'Attraktionstyp'
             }
 
-            # Random Forest Importance
             with fi_col1:
                 if 'rf' in st.session_state['trainer'].models:
                     st.markdown("**Random Forest**")
@@ -164,7 +156,6 @@ else:
                     ax_imp1.set_ylabel("", color='white')
                     st.pyplot(fig_imp1)
 
-            # Gradient Boosting Importance
             with fi_col2:
                 if 'gb' in st.session_state['trainer'].models:
                     st.markdown("**Gradient Boosting**")
@@ -182,7 +173,7 @@ else:
 
         st.divider()
         
-        # Correlation & Distribution (Compact)
+        # 2. Correlation & Distribution
         col_corr, col_dist = st.columns(2)
         with col_corr:
             st.markdown("**Korrelationsmatrix**")
@@ -249,23 +240,18 @@ else:
                         except: continue
                     
                     if rows:
-                        res_df = pd.DataFrame(rows).set_index('Attraktion')
+                        res_df = pd.DataFrame(rows)
+                        st.markdown("#### Modellvergleich (Simulierte Prognose)")
+                        melted_sim = res_df.melt(id_vars='Attraktion', var_name='Modell', value_name='Prognose')
                         
-                        # 3-Spalten Layout für Modelle
-                        c_rf, c_gb, c_lstm = st.columns(3)
-                        
-                        with c_rf:
-                            st.markdown("**Random Forest**")
-                            st.dataframe(res_df[['Random Forest']].sort_values('Random Forest', ascending=False), use_container_width=True)
-                        with c_gb:
-                            st.markdown("**Gradient Boosting**")
-                            st.dataframe(res_df[['Gradient Boosting']].sort_values('Gradient Boosting', ascending=False), use_container_width=True)
-                        with c_lstm:
-                            st.markdown("**LSTM**")
-                            if 'LSTM' in res_df.columns:
-                                st.dataframe(res_df[['LSTM']].sort_values('LSTM', ascending=False), use_container_width=True)
-                            else:
-                                st.warning("N/A")
+                        fig_sim, ax_sim = plt.subplots(figsize=(12, 6))
+                        fig_sim.patch.set_facecolor('#0E1117')
+                        top_attractions = res_df.head(10)['Attraktion'].tolist()
+                        melted_filtered = melted_sim[melted_sim['Attraktion'].isin(top_attractions)]
+                        sns.barplot(data=melted_filtered, x='Prognose', y='Attraktion', hue='Modell', palette="viridis", ax=ax_sim)
+                        ax_sim.set_ylabel("", color='white')
+                        ax_sim.set_xlabel("Prognostizierte Wartezeit (Minuten)", color='white')
+                        st.pyplot(fig_sim)
 
             # --- SUBTAB 2: REALITY CHECK ---
             with subtab_live:
@@ -295,39 +281,61 @@ else:
                                 'ride_id': rid_meta['ride_id']
                             }])
                             preds = st.session_state['trainer'].predict_ensemble(inp_now)
-                            row = {'Attraktion': r, 'Ist': real_val}
+                            row = {'Attraktion': r, 'Messwert (Ist)': real_val}
                             row.update(preds)
                             rows_live.append(row)
                         except: continue
                     
                     if rows_live:
-                        live_df = pd.DataFrame(rows_live).set_index('Attraktion')
-                        st.markdown(f"**Referenzzeitpunkt:** {latest_date}")
+                        live_df = pd.DataFrame(rows_live)
+                        st.markdown(f"#### Diskrepanz-Analyse (Referenzzeitpunkt: {latest_date})")
+                        melted = live_df.melt(id_vars='Attraktion', var_name='Datenquelle', value_name='Minuten')
                         
-                        # 3 Spalten Vergleich + IST
-                        c_rf, c_gb, c_lstm = st.columns(3)
-                        
-                        # Helper um Delta anzuzeigen
-                        def show_model_col(col_obj, name, df):
-                            with col_obj:
-                                st.markdown(f"**{name}**")
-                                temp = df[['Ist', name]].copy()
-                                temp['Delta'] = temp[name] - temp['Ist']
-                                st.dataframe(temp[[name, 'Delta']], use_container_width=True)
+                        fig_check, ax_check = plt.subplots(figsize=(12, 6))
+                        fig_check.patch.set_facecolor('#0E1117')
+                        palette = {"Messwert (Ist)": "#ff4b4b", "Random Forest": "#4c72b0", "Gradient Boosting": "#55a868", "LSTM": "#8172b2"}
+                        top_attractions_live = live_df.sort_values('Messwert (Ist)', ascending=False).head(10)['Attraktion'].tolist()
+                        melted_filtered_live = melted[melted['Attraktion'].isin(top_attractions_live)]
 
-                        show_model_col(c_rf, 'Random Forest', live_df)
-                        show_model_col(c_gb, 'Gradient Boosting', live_df)
-                        
-                        if 'LSTM' in live_df.columns:
-                            show_model_col(c_lstm, 'LSTM', live_df)
+                        sns.barplot(data=melted_filtered_live, x='Minuten', y='Attraktion', hue='Datenquelle', palette=palette, ax=ax_check)
+                        ax_check.set_ylabel("", color='white')
+                        ax_check.set_xlabel("Wartezeit (Minuten)", color='white')
+                        st.pyplot(fig_check)
 
-    # TAB 4: VALIDIERUNG
+    # TAB 4: VALIDIERUNG (NEU GESTALTET)
     with tab4:
         if 'benchmark' in st.session_state:
             res = st.session_state['benchmark']
             
-            # 1. Zeitreihe (Top)
+            # --- 1. KPI CARDS (Beweis für Random Forest) ---
+            st.subheader("Performance-Metriken (Testdatensatz)")
+            
+            # Finde bestes Modell basierend auf RMSE
+            best_model_name = min(res, key=lambda k: res[k]['rmse'])
+            
+            # Erstelle Spalten für jedes Modell
+            cols = st.columns(len(res))
+            
+            for idx, (name, metrics) in enumerate(res.items()):
+                with cols[idx]:
+                    rmse_val = metrics['rmse']
+                    r2_val = metrics['r2']
+                    
+                    # Highlight für den Sieger
+                    if name == best_model_name:
+                        st.success(f"🏆 {name} (Beste Präzision)")
+                        st.metric(label="RMSE (Fehler)", value=f"{rmse_val:.2f} min", delta="Minimum", delta_color="inverse")
+                        st.metric(label="R² (Erklärungskraft)", value=f"{r2_val:.2f}", delta="Maximum")
+                    else:
+                        st.info(f"{name}")
+                        st.metric(label="RMSE (Fehler)", value=f"{rmse_val:.2f} min")
+                        st.metric(label="R² (Erklärungskraft)", value=f"{r2_val:.2f}")
+
+            st.divider()
+
+            # --- 2. Zeitreihen-Validierung ---
             st.subheader("Zeitreihen-Validierung (Test-Sample)")
+            
             first_key = list(res.keys())[0]
             limit = 100 
             actuals = res[first_key]['actuals'][:limit]
@@ -343,45 +351,24 @@ else:
             ax_line.set_xlabel("Zeitpunkte", color='white')
             st.pyplot(fig_line)
 
-            st.divider()
-
-            # 2. Metriken & Residuen
-            col_met, col_res = st.columns(2)
+            # --- 3. Residuenanalyse ---
+            st.subheader("Residuenanalyse (Fehlerverteilung)")
+            res_data = pd.DataFrame()
+            limit_res = 300
+            actuals_res = res[first_key]['actuals'][:limit_res]
             
-            with col_met:
-                st.subheader("Metrik-Analyse")
-                metrics_list = []
-                for name, metrics in res.items():
-                    metrics_list.append({'Algorithmus': name, 'Metrik': 'RMSE', 'Wert': metrics['rmse']})
-                    metrics_list.append({'Algorithmus': name, 'Metrik': 'R²', 'Wert': metrics['r2']})
-                
-                met_df = pd.DataFrame(metrics_list)
-                
-                fig_met, ax_met = plt.subplots(figsize=(6, 4))
-                fig_met.patch.set_facecolor('#0E1117')
-                sns.barplot(data=met_df, x='Algorithmus', y='Wert', hue='Metrik', palette="deep", ax=ax_met)
-                ax_met.set_ylabel("Wert", color='white')
-                ax_met.set_xlabel("", color='white')
-                st.pyplot(fig_met)
-                
-            with col_res:
-                st.subheader("Residuenanalyse")
-                res_data = pd.DataFrame()
-                limit_res = 300
-                actuals_res = res[first_key]['actuals'][:limit_res]
-                
-                for name, metrics in res.items():
-                    residuals = actuals_res - metrics['predictions'][:limit_res]
-                    temp = pd.DataFrame({'Residuum': residuals, 'Algorithmus': name})
-                    res_data = pd.concat([res_data, temp])
-                
-                fig_res, ax_res = plt.subplots(figsize=(6, 4))
-                fig_res.patch.set_facecolor('#0E1117')
-                sns.kdeplot(data=res_data, x='Residuum', hue='Algorithmus', fill=True, alpha=0.3, ax=ax_res)
-                ax_res.axvline(0, color='white', linestyle='--', linewidth=1)
-                ax_res.set_xlabel("Abweichung (Minuten)", color='white')
-                ax_res.set_ylabel("Dichte", color='white')
-                st.pyplot(fig_res)
+            for name, metrics in res.items():
+                residuals = actuals_res - metrics['predictions'][:limit_res]
+                temp = pd.DataFrame({'Residuum': residuals, 'Algorithmus': name})
+                res_data = pd.concat([res_data, temp])
+            
+            fig_res, ax_res = plt.subplots(figsize=(10, 4))
+            fig_res.patch.set_facecolor('#0E1117')
+            sns.kdeplot(data=res_data, x='Residuum', hue='Algorithmus', fill=True, alpha=0.3, ax=ax_res)
+            ax_res.axvline(0, color='white', linestyle='--', linewidth=1)
+            ax_res.set_xlabel("Abweichung (Minuten)", color='white')
+            ax_res.set_ylabel("Dichte", color='white')
+            st.pyplot(fig_res)
                 
         else:
             st.info("Bitte Training durchführen.")
