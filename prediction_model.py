@@ -30,26 +30,91 @@ class PredictionModel:
         self.models = {}
         self.scalers = {} # Needed for LSTM
 
+
+
+
+
+
+
     def run_benchmark(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Trains all available models and compares metrics."""
         if df.empty: raise ValueError("Empty DataFrame")
 
         # 1. Prepare Data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         features = ['hour', 'weekday', 'month', 'is_weekend', 
                     'holiday_de_bw', 'holiday_fr_zone_b', 'holiday_ch_bs',
                     'temp', 'rain', 'HCI_Urban', 
                     'wait_time_lag_1', 'wait_time_lag_6', 'ride_id']
+
         
+
         for f in features:
             if f not in df.columns: df[f] = 0
             
+
         X = df[features]
         y = df['wait_time']
         
         # Chronological Split (80/20)
+
         split_idx = int(len(df) * 0.8)
         X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         results = {}
 
@@ -109,6 +174,8 @@ class PredictionModel:
             'r2': r2_score(y_test, pred),
             'predictions': pred,
             'actuals': y_test.values
+
+
         }
 
     def predict_ensemble(self, input_df: pd.DataFrame) -> Dict[str, float]:
@@ -121,7 +188,7 @@ class PredictionModel:
         # GB
         if 'gb' in self.models:
             preds['Gradient Boosting'] = self.models['gb'].predict(input_df)[0]
-            
+
         # LSTM
         if 'lstm' in self.models and TF_AVAILABLE:
             sc = self.scalers['lstm']
